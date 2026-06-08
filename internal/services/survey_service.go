@@ -90,6 +90,40 @@ func (s *SurveyService) AnalyzeSurvey(ctx context.Context, surveyPeriodID string
 	return result, nil
 }
 
+func (s *SurveyService) AnalyzeSurveyByRegion(ctx context.Context, surveyPeriodID string, regionFullCode string) (*dto.SurveyFraudAnalysisResult, error) {
+	assignments, err := s.assignmentRepo.FindBySurveyPeriodIDWithFilter(surveyPeriodID, repositories.AssignmentRegionFilter{
+		RegionFullCode: strings.TrimSpace(regionFullCode),
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	result := &dto.SurveyFraudAnalysisResult{
+		SurveyPeriodID:   surveyPeriodID,
+		TotalAssignments: len(assignments),
+		GeneratedAt:      time.Now(),
+		Assignments:      make([]dto.AssignmentSurveyAnalysis, 0, len(assignments)),
+	}
+
+	for _, assignment := range assignments {
+		select {
+		case <-ctx.Done():
+			return nil, ctx.Err()
+		default:
+		}
+
+		analysis, err := s.assignmentSvc.AnalyzeAssignment(ctx, assignment.AssignmentID)
+		if err != nil {
+			return nil, fmt.Errorf("analyze assignment %s: %w", assignment.AssignmentID, err)
+		}
+
+		result.AnalyzedAssignments++
+		result.Assignments = append(result.Assignments, *analysis)
+	}
+
+	return result, nil
+}
+
 func (s *SurveyService) CreateSurvey(req dto.CreateSurveyRequest) error {
 	name := strings.TrimSpace(req.Name)
 	surveyID := strings.TrimSpace(req.SurveyID)
@@ -805,13 +839,14 @@ func (s *SurveyService) SyncSurveyRegions(ctx context.Context, surveyPeriodID st
 	}, nil
 }
 
-func (s *SurveyService) SyncSurveyAssignments(ctx context.Context, surveyPeriodID string) (*dto.SyncSurveyAssignmentsResponse, error) {
+func (s *SurveyService) SyncSurveyAssignments(ctx context.Context, surveyPeriodID string, req dto.SyncSurveyAssignmentsRequest) (*dto.SyncSurveyAssignmentsResponse, error) {
 	if !s.fasihService.IsAvailable(ctx) {
 		return nil, apperrors.NewHttpError(http.StatusServiceUnavailable, "Fasih belum dapat diakses saat ini")
 	}
 
+	requestedRegionFullCode := strings.TrimSpace(req.RegionFullCode)
 	startedAt := time.Now()
-	log.Printf("[sync] start survey sync: surveyPeriodID=%s, pageLength=%d", surveyPeriodID, maxSyncPageLength)
+	log.Printf("[sync] start survey sync: surveyPeriodID=%s, pageLength=%d, regionFullCode=%s", surveyPeriodID, maxSyncPageLength, requestedRegionFullCode)
 
 	survey, err := s.surveyRepo.FindBySurveyPeriodID(surveyPeriodID)
 	if err != nil {
@@ -828,19 +863,45 @@ func (s *SurveyService) SyncSurveyAssignments(ctx context.Context, surveyPeriodI
 
 	effectiveLength := maxSyncPageLength
 
+	var regionFilterParam dto.FasihAssignmentExtraParam
+	regionFilterParam.SurveyPeriodID = survey.SurveyPeriodID
+	if requestedRegionFullCode != "" {
+		levelCount, regionID, err := s.resolveDatatableRegionFilter(ctx, survey, creds, requestedRegionFullCode)
+		fmt.Printf("[sync] resolved region filter: surveyPeriodID=%s regionFullCode=%s levelCount=%d regionID=%s err=%v\n", surveyPeriodID, requestedRegionFullCode, levelCount, regionID, err)
+		if err != nil {
+			return nil, err
+		}
+
+		switch levelCount {
+		case 1:
+			regionFilterParam.Region1ID = &regionID
+		case 2:
+			regionFilterParam.Region2ID = &regionID
+		case 3:
+			regionFilterParam.Region3ID = &regionID
+		case 4:
+			regionFilterParam.Region4ID = &regionID
+		case 5:
+			regionFilterParam.Region5ID = &regionID
+		case 6:
+			regionFilterParam.Region6ID = &regionID
+		default:
+			return nil, apperrors.NewHttpError(http.StatusBadRequest, "level region survey tidak valid")
+		}
+	}
+
 	result := &dto.SyncSurveyAssignmentsResponse{}
 	start := 0
 	batch := 0
 	skippedUnchanged := 0
+	matchedAssignments := 0
 
 	for {
 		batch++
 		datatableReq := dto.FasihDatatableRequest{
-			Start:  start,
-			Length: effectiveLength,
-			AssignmentExtraParam: dto.FasihAssignmentExtraParam{
-				SurveyPeriodID: survey.SurveyPeriodID,
-			},
+			Start:                start,
+			Length:               effectiveLength,
+			AssignmentExtraParam: regionFilterParam,
 		}
 
 		datatableResp, err := s.fasihService.GetAssignmentDatatable(ctx, creds, datatableReq)
@@ -856,6 +917,21 @@ func (s *SurveyService) SyncSurveyAssignments(ctx context.Context, surveyPeriodI
 		}
 
 		for _, row := range datatableResp.SearchData {
+			regionFullCode, regionLevel1, regionLevel2, regionLevel3, regionLevel4, regionLevel5, regionLevel6 := extractRegionLevelCodes(row.Region)
+
+			if requestedRegionFullCode != "" {
+				rowRegionFullCode := ""
+				if regionFullCode != nil {
+					rowRegionFullCode = strings.TrimSpace(*regionFullCode)
+				}
+
+				if rowRegionFullCode != requestedRegionFullCode {
+					continue
+				}
+			}
+
+			matchedAssignments++
+
 			existingAssignment, err := s.assignmentRepo.FindByAssignmentID(row.ID)
 			hasExistingAssignment := err == nil
 			if err != nil && err != gorm.ErrRecordNotFound {
@@ -871,8 +947,6 @@ func (s *SurveyService) SyncSurveyAssignments(ctx context.Context, surveyPeriodI
 			if hasExistingAssignment && existingAssignment.StartedAt.Valid {
 				startedAt = existingAssignment.StartedAt
 			}
-
-			regionFullCode, regionLevel1, regionLevel2, regionLevel3, regionLevel4, regionLevel5, regionLevel6 := extractRegionLevelCodes(row.Region)
 
 			submittedAt, err := parseFlexibleTime(row.DateCreated)
 			if err != nil {
@@ -974,6 +1048,10 @@ func (s *SurveyService) SyncSurveyAssignments(ctx context.Context, surveyPeriodI
 		}
 	}
 
+	if requestedRegionFullCode != "" {
+		result.TotalAssignments = matchedAssignments
+	}
+
 	if err := s.surveyRepo.UpdateSurveyRegionAssignmentCounts(surveyPeriodID); err != nil {
 		return nil, err
 	}
@@ -981,6 +1059,120 @@ func (s *SurveyService) SyncSurveyAssignments(ctx context.Context, surveyPeriodI
 	log.Printf("[sync] completed in %s: total=%d savedAssignments=%d savedLogs=%d savedAnswers=%d skipped=%d", time.Since(startedAt).Round(time.Second), result.TotalAssignments, result.SavedAssignments, result.SavedLogs, result.SavedAnswers, skippedUnchanged)
 
 	return result, nil
+}
+
+func (s *SurveyService) resolveDatatableRegionFilter(
+	ctx context.Context,
+	survey *models.Survey,
+	creds dto.FasihCredentials,
+	requestedRegionFullCode string,
+) (int, string, error) {
+	groupID := ""
+	if survey.RegionGroupID != nil {
+		groupID = strings.TrimSpace(*survey.RegionGroupID)
+	}
+
+	if groupID == "" {
+		surveyResp, err := s.fasihService.GetSurveyByID(ctx, creds, dto.FasihSurveyByIDRequest{SurveyID: survey.SurveyID})
+		if err != nil {
+			return 0, "", err
+		}
+
+		groupID = strings.TrimSpace(surveyResp.Data.RegionGroupID)
+		if groupID == "" {
+			return 0, "", apperrors.NewHttpError(http.StatusBadRequest, "region group id survey tidak ditemukan")
+		}
+	}
+
+	levelCount := 0
+	if survey.RegionLevelCount != nil {
+		levelCount = *survey.RegionLevelCount
+	}
+
+	if levelCount < 1 || levelCount > 6 {
+		metadataResp, err := s.fasihService.GetRegionMetadata(ctx, creds, dto.FasihRegionMetadataRequest{GroupID: groupID})
+		if err != nil {
+			return 0, "", err
+		}
+
+		levelCount = metadataResp.Data.LevelCount
+	}
+
+	if levelCount < 1 || levelCount > 6 {
+		return 0, "", apperrors.NewHttpError(http.StatusBadRequest, "level region survey tidak valid")
+	}
+
+	requested := strings.TrimSpace(requestedRegionFullCode)
+	if requested == "" {
+		return 0, "", apperrors.NewHttpError(http.StatusBadRequest, "region_full_code wajib diisi")
+	}
+
+	parentFullCode := ""
+	if levelCount > 1 {
+		regions, err := s.surveyRepo.FindBySurveyPeriodIDWithFilter(survey.SurveyPeriodID, repositories.AssignmentRegionFilter{
+			RegionFullCode: requested,
+		})
+		if err != nil {
+			return 0, "", err
+		}
+
+		if len(regions) == 0 {
+			return 0, "", apperrors.NewHttpError(http.StatusBadRequest, "region_full_code tidak ditemukan di data region survey")
+		}
+
+		var parentErr error
+		parentFullCode, parentErr = buildParentFullCodeForLevel(regions[0], levelCount)
+		if parentErr != nil {
+			return 0, "", parentErr
+		}
+	}
+
+	listResp, err := s.fasihService.GetRegionsByLevel(ctx, creds, dto.FasihRegionListRequest{
+		GroupID:        groupID,
+		Level:          levelCount,
+		ParentFullCode: parentFullCode,
+	})
+	if err != nil {
+		return 0, "", err
+	}
+
+	for _, item := range listResp.Data {
+		if strings.TrimSpace(item.FullCode) != requested {
+			continue
+		}
+
+		regionID := strings.TrimSpace(item.ID)
+		if regionID == "" {
+			return 0, "", apperrors.NewHttpError(http.StatusBadRequest, "region id tidak ditemukan")
+		}
+
+		return levelCount, regionID, nil
+	}
+
+	return 0, "", apperrors.NewHttpError(http.StatusBadRequest, fmt.Sprintf("region_full_code harus region level %d", levelCount))
+}
+
+func buildParentFullCodeForLevel(region models.Region, levelCount int) (string, error) {
+	if levelCount <= 1 {
+		return "", nil
+	}
+
+	levels := []*string{region.Level1, region.Level2, region.Level3, region.Level4, region.Level5}
+	var parts []string
+	for index := 0; index < levelCount-1; index++ {
+		if index >= len(levels) || levels[index] == nil {
+			return "", apperrors.NewHttpError(http.StatusBadRequest, fmt.Sprintf("kode level %d region tidak tersedia", index+1))
+		}
+
+		trimmed := strings.TrimSpace(*levels[index])
+		if trimmed == "" {
+			return "", apperrors.NewHttpError(http.StatusBadRequest, fmt.Sprintf("kode level %d region kosong", index+1))
+		}
+
+		parts = append(parts, trimmed)
+	}
+
+	return strings.Join(parts, ""), nil
 }
 
 func parseRevisedAt(raw string, fallback time.Time) (time.Time, error) {

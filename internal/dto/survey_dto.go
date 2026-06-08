@@ -103,6 +103,10 @@ type SyncSurveyAssignmentsResponse struct {
 	SavedAnswers     int `json:"saved_answers"`
 }
 
+type SyncSurveyAssignmentsRequest struct {
+	RegionFullCode string `json:"region_full_code,omitempty"`
+}
+
 type SyncSurveyRegionsRequest struct {
 	RegionGroupID string `json:"region_group_id,omitempty"`
 }

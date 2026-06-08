@@ -7,6 +7,7 @@ import (
 	apperrors "jejak/internal/errors"
 	"jejak/internal/mappers"
 	"jejak/internal/services"
+	"jejak/utils"
 	"strings"
 	"time"
 
@@ -78,12 +79,38 @@ func (h *SurveyHandler) SyncSurveyAssignments(c fiber.Ctx) error {
 		return respondError(c, apperrors.NewHttpError(fiber.StatusBadRequest, "surveyPeriodId is required"))
 	}
 
-	result, err := h.service.SyncSurveyAssignments(c.Context(), surveyPeriodID)
+	roles, _ := c.Locals("roles").([]string)
+	if !utils.IsAdmin(roles) {
+		return respondError(c, apperrors.NewHttpError(fiber.StatusForbidden, "You are not authorized to sync all assignments"))
+	}
+
+	result, err := h.service.SyncSurveyAssignments(c.Context(), surveyPeriodID, dto.SyncSurveyAssignmentsRequest{})
 	if err != nil {
 		return respondError(c, err)
 	}
 
 	return respondOK(c, result, "Survey assignments synced successfully")
+}
+
+func (h *SurveyHandler) SyncSurveyAssignmentsByRegion(c fiber.Ctx) error {
+	surveyPeriodID := c.Params("surveyPeriodId")
+	if surveyPeriodID == "" {
+		return respondError(c, apperrors.NewHttpError(fiber.StatusBadRequest, "surveyPeriodId is required"))
+	}
+
+	regionFullCode := strings.TrimSpace(c.Params("regionFullCode"))
+	if regionFullCode == "" {
+		return respondError(c, apperrors.NewHttpError(fiber.StatusBadRequest, "regionFullCode is required"))
+	}
+
+	result, err := h.service.SyncSurveyAssignments(c.Context(), surveyPeriodID, dto.SyncSurveyAssignmentsRequest{
+		RegionFullCode: regionFullCode,
+	})
+	if err != nil {
+		return respondError(c, err)
+	}
+
+	return respondOK(c, result, "Survey region assignments synced successfully")
 }
 
 func (h *SurveyHandler) ImportSurveyRegions(c fiber.Ctx) error {
@@ -263,12 +290,36 @@ func (h *SurveyHandler) AnalyzeSurvey(c fiber.Ctx) error {
 		return respondError(c, apperrors.NewHttpError(fiber.StatusBadRequest, "surveyPeriodId is required"))
 	}
 
+	roles, _ := c.Locals("roles").([]string)
+	if !utils.IsAdmin(roles) {
+		return respondError(c, apperrors.NewHttpError(fiber.StatusForbidden, "You are not authorized to analyze all assignments"))
+	}
+
 	result, err := h.service.AnalyzeSurvey(c.Context(), surveyPeriodID)
 	if err != nil {
 		return respondError(c, err)
 	}
 
 	return respondOK(c, result, "Survey analyzed successfully")
+}
+
+func (h *SurveyHandler) AnalyzeSurveyByRegion(c fiber.Ctx) error {
+	surveyPeriodID := c.Params("surveyPeriodId")
+	if surveyPeriodID == "" {
+		return respondError(c, apperrors.NewHttpError(fiber.StatusBadRequest, "surveyPeriodId is required"))
+	}
+
+	regionFullCode := strings.TrimSpace(c.Params("regionFullCode"))
+	if regionFullCode == "" {
+		return respondError(c, apperrors.NewHttpError(fiber.StatusBadRequest, "regionFullCode is required"))
+	}
+
+	result, err := h.service.AnalyzeSurveyByRegion(c.Context(), surveyPeriodID, regionFullCode)
+	if err != nil {
+		return respondError(c, err)
+	}
+
+	return respondOK(c, result, "Survey region analyzed successfully")
 }
 
 func (h *SurveyHandler) SyncSurveyRegions(c fiber.Ctx) error {

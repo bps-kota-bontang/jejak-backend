@@ -65,7 +65,13 @@ type FasihSurveyByIDRequest struct {
 }
 
 type FasihAssignmentExtraParam struct {
-	SurveyPeriodID string `json:"surveyPeriodId"`
+	SurveyPeriodID string  `json:"surveyPeriodId"`
+	Region1ID      *string `json:"region1Id,omitempty"`
+	Region2ID      *string `json:"region2Id,omitempty"`
+	Region3ID      *string `json:"region3Id,omitempty"`
+	Region4ID      *string `json:"region4Id,omitempty"`
+	Region5ID      *string `json:"region5Id,omitempty"`
+	Region6ID      *string `json:"region6Id,omitempty"`
 }
 
 type FasihParadataPayload struct {

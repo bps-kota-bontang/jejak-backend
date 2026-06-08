@@ -71,17 +71,38 @@ func (s *FasihService) IsAvailable(ctx context.Context) bool {
 }
 
 func (s *FasihService) GetAssignmentDatatable(ctx context.Context, creds dto.FasihCredentials, req dto.FasihDatatableRequest) (*dto.FasihDatatableResponse, error) {
+	assignmentExtraParam := map[string]interface{}{
+		"surveyPeriodId":            req.AssignmentExtraParam.SurveyPeriodID,
+		"assignmentErrorStatusType": -1,
+		"filterTargetType":          "TARGET_ONLY",
+	}
+
+	if req.AssignmentExtraParam.Region1ID != nil {
+		assignmentExtraParam["region1Id"] = *req.AssignmentExtraParam.Region1ID
+	}
+	if req.AssignmentExtraParam.Region2ID != nil {
+		assignmentExtraParam["region2Id"] = *req.AssignmentExtraParam.Region2ID
+	}
+	if req.AssignmentExtraParam.Region3ID != nil {
+		assignmentExtraParam["region3Id"] = *req.AssignmentExtraParam.Region3ID
+	}
+	if req.AssignmentExtraParam.Region4ID != nil {
+		assignmentExtraParam["region4Id"] = *req.AssignmentExtraParam.Region4ID
+	}
+	if req.AssignmentExtraParam.Region5ID != nil {
+		assignmentExtraParam["region5Id"] = *req.AssignmentExtraParam.Region5ID
+	}
+	if req.AssignmentExtraParam.Region6ID != nil {
+		assignmentExtraParam["region6Id"] = *req.AssignmentExtraParam.Region6ID
+	}
+
 	body := map[string]interface{}{
 		"start":   req.Start,
 		"length":  req.Length,
 		"columns": fasihColumns,
 		"order":   []interface{}{},
 		"search":  map[string]interface{}{"value": "", "regex": false},
-		"assignmentExtraParam": map[string]interface{}{
-			"surveyPeriodId":            req.AssignmentExtraParam.SurveyPeriodID,
-			"assignmentErrorStatusType": -1,
-			"filterTargetType":          "TARGET_ONLY",
-		},
+		"assignmentExtraParam": assignmentExtraParam,
 	}
 
 	rawBody, err := json.Marshal(body)

@@ -101,7 +101,7 @@ func runSync(surveyContainer *container.SurveyContainer) {
 		log.Fatal("set fasihSurveyPeriodID in code")
 	}
 
-	result, err := surveyContainer.SurveyService.SyncSurveyAssignments(context.Background(), fasihSurveyPeriodID)
+		result, err := surveyContainer.SurveyService.SyncSurveyAssignments(context.Background(), fasihSurveyPeriodID, dto.SyncSurveyAssignmentsRequest{})
 	if err != nil {
 		log.Fatalf("failed to sync survey: %v", err)
 	}

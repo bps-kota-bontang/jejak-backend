@@ -37,3 +37,8 @@ profile.cov
 
 # Node.js (if using frontend with GoFiber)
 node_modules/
+
+# GeoJSON uploads: keep folder structure, ignore data files
+public/geojson/*.geojson
+!public/geojson/
+!public/geojson/.gitkeep

@@ -897,8 +897,9 @@ func (s *SurveyService) SyncSurveyAssignments(ctx context.Context, surveyPeriodI
 	allowedStatuses := map[string]struct{}{
 		strings.ToUpper("DRAFT"):                 {},
 		strings.ToUpper("SUBMITTED BY Pencacah"): {},
+		strings.ToUpper("COMPLETED BY Pengawas"): {},
 	}
-	syncStatuses := []string{"DRAFT", "SUBMITTED BY Pencacah"}
+	syncStatuses := []string{"DRAFT", "SUBMITTED BY Pencacah", "COMPLETED BY Pengawas"}
 
 	for _, syncStatus := range syncStatuses {
 		start := 0

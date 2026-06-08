@@ -867,7 +867,6 @@ func (s *SurveyService) SyncSurveyAssignments(ctx context.Context, surveyPeriodI
 	regionFilterParam.SurveyPeriodID = survey.SurveyPeriodID
 	if requestedRegionFullCode != "" {
 		levelCount, regionID, err := s.resolveDatatableRegionFilter(ctx, survey, creds, requestedRegionFullCode)
-		fmt.Printf("[sync] resolved region filter: surveyPeriodID=%s regionFullCode=%s levelCount=%d regionID=%s err=%v\n", surveyPeriodID, requestedRegionFullCode, levelCount, regionID, err)
 		if err != nil {
 			return nil, err
 		}
@@ -891,160 +890,182 @@ func (s *SurveyService) SyncSurveyAssignments(ctx context.Context, surveyPeriodI
 	}
 
 	result := &dto.SyncSurveyAssignmentsResponse{}
-	start := 0
 	batch := 0
 	skippedUnchanged := 0
 	matchedAssignments := 0
 
-	for {
-		batch++
-		datatableReq := dto.FasihDatatableRequest{
-			Start:                start,
-			Length:               effectiveLength,
-			AssignmentExtraParam: regionFilterParam,
-		}
+	allowedStatuses := map[string]struct{}{
+		strings.ToUpper("DRAFT"):                 {},
+		strings.ToUpper("SUBMITTED BY Pencacah"): {},
+	}
+	syncStatuses := []string{"DRAFT", "SUBMITTED BY Pencacah"}
 
-		datatableResp, err := s.fasihService.GetAssignmentDatatable(ctx, creds, datatableReq)
-		if err != nil {
-			return nil, err
-		}
+	for _, syncStatus := range syncStatuses {
+		start := 0
+		for {
+			batch++
+			datatableReq := dto.FasihDatatableRequest{
+				Start:  start,
+				Length: effectiveLength,
+				AssignmentExtraParam: dto.FasihAssignmentExtraParam{
+					SurveyPeriodID:        regionFilterParam.SurveyPeriodID,
+					AssignmentStatusAlias: syncStatus,
+					Region1ID:             regionFilterParam.Region1ID,
+					Region2ID:             regionFilterParam.Region2ID,
+					Region3ID:             regionFilterParam.Region3ID,
+					Region4ID:             regionFilterParam.Region4ID,
+					Region5ID:             regionFilterParam.Region5ID,
+					Region6ID:             regionFilterParam.Region6ID,
+				},
+			}
 
-		result.TotalAssignments = datatableResp.TotalHit
-		log.Printf("[sync] batch=%d fetched=%d offset=%d total=%d", batch, len(datatableResp.SearchData), start, datatableResp.TotalHit)
-		if len(datatableResp.SearchData) == 0 {
-			log.Printf("[sync] no data returned on batch=%d, stop paging", batch)
-			break
-		}
+			datatableResp, err := s.fasihService.GetAssignmentDatatable(ctx, creds, datatableReq)
+			if err != nil {
+				return nil, err
+			}
 
-		for _, row := range datatableResp.SearchData {
-			regionFullCode, regionLevel1, regionLevel2, regionLevel3, regionLevel4, regionLevel5, regionLevel6 := extractRegionLevelCodes(row.Region)
+			result.TotalAssignments += datatableResp.TotalHit
+			log.Printf("[sync] status=%s batch=%d fetched=%d offset=%d total=%d", syncStatus, batch, len(datatableResp.SearchData), start, datatableResp.TotalHit)
+			if len(datatableResp.SearchData) == 0 {
+				log.Printf("[sync] status=%s no data returned on batch=%d, stop paging", syncStatus, batch)
+				break
+			}
 
-			if requestedRegionFullCode != "" {
-				rowRegionFullCode := ""
-				if regionFullCode != nil {
-					rowRegionFullCode = strings.TrimSpace(*regionFullCode)
-				}
-
-				if rowRegionFullCode != requestedRegionFullCode {
+			for _, row := range datatableResp.SearchData {
+				rowStatus := strings.ToUpper(strings.TrimSpace(row.AssignmentStatusAlias))
+				if _, ok := allowedStatuses[rowStatus]; !ok {
 					continue
 				}
-			}
 
-			matchedAssignments++
+				regionFullCode, regionLevel1, regionLevel2, regionLevel3, regionLevel4, regionLevel5, regionLevel6 := extractRegionLevelCodes(row.Region)
 
-			existingAssignment, err := s.assignmentRepo.FindByAssignmentID(row.ID)
-			hasExistingAssignment := err == nil
-			if err != nil && err != gorm.ErrRecordNotFound {
-				return nil, err
-			}
+				if requestedRegionFullCode != "" {
+					rowRegionFullCode := ""
+					if regionFullCode != nil {
+						rowRegionFullCode = strings.TrimSpace(*regionFullCode)
+					}
 
-			openedAt := sql.NullTime{}
-			if hasExistingAssignment && existingAssignment.OpenedAt.Valid {
-				openedAt = existingAssignment.OpenedAt
-			}
+					if rowRegionFullCode != requestedRegionFullCode {
+						continue
+					}
+				}
 
-			startedAt := sql.NullTime{}
-			if hasExistingAssignment && existingAssignment.StartedAt.Valid {
-				startedAt = existingAssignment.StartedAt
-			}
+				matchedAssignments++
 
-			submittedAt, err := parseFlexibleTime(row.DateCreated)
-			if err != nil {
-				return nil, fmt.Errorf("parse submittedAt for assignment %s: %w", row.ID, err)
-			}
+				existingAssignment, err := s.assignmentRepo.FindByAssignmentID(row.ID)
+				hasExistingAssignment := err == nil
+				if err != nil && err != gorm.ErrRecordNotFound {
+					return nil, err
+				}
 
-			revisedAt, err := parseRevisedAt(row.DateModified, submittedAt)
-			if err != nil {
-				return nil, fmt.Errorf("parse revisedAt for assignment %s: %w", row.ID, err)
-			}
+				openedAt := sql.NullTime{}
+				if hasExistingAssignment && existingAssignment.OpenedAt.Valid {
+					openedAt = existingAssignment.OpenedAt
+				}
 
-			assignment := &models.Assignment{
-				SurveyPeriodID: survey.SurveyPeriodID,
-				AssignmentID:   row.ID,
-				RegionFullCode: regionFullCode,
-				RegionLevel1:   regionLevel1,
-				RegionLevel2:   regionLevel2,
-				RegionLevel3:   regionLevel3,
-				RegionLevel4:   regionLevel4,
-				RegionLevel5:   regionLevel5,
-				RegionLevel6:   regionLevel6,
-				Latitude:       row.Latitude,
-				Longitude:      row.Longitude,
-				OpenedAt:       openedAt,
-				StartedAt:      startedAt,
-				SubmittedAt:    submittedAt,
-				RevisedAt:      revisedAt,
-			}
-			if err := s.assignmentRepo.Upsert(assignment); err != nil {
-				return nil, err
-			}
-			result.SavedAssignments++
+				startedAt := sql.NullTime{}
+				if hasExistingAssignment && existingAssignment.StartedAt.Valid {
+					startedAt = existingAssignment.StartedAt
+				}
 
-			if hasExistingAssignment && existingAssignment.RevisedAt.Equal(revisedAt) && existingAssignment.StartedAt.Valid {
-				skippedUnchanged++
-				continue
-			}
+				submittedAt, err := parseFlexibleTime(row.DateCreated)
+				if err != nil {
+					return nil, fmt.Errorf("parse submittedAt for assignment %s: %w", row.ID, err)
+				}
 
-			historyResp, err := s.fasihService.GetAssignmentHistoryByID(ctx, creds, dto.FasihAssignmentByIDRequest{AssignmentID: row.ID})
-			if err != nil {
-				return nil, err
-			}
-			logs, err := extractLogsFromHistory(row.ID, historyResp.Data)
-			if err != nil {
-				return nil, err
-			}
-			if err := s.logRepo.ReplaceByAssignmentID(row.ID, logs); err != nil {
-				return nil, err
-			}
-			result.SavedLogs += len(logs)
+				revisedAt, err := parseRevisedAt(row.DateModified, submittedAt)
+				if err != nil {
+					return nil, fmt.Errorf("parse revisedAt for assignment %s: %w", row.ID, err)
+				}
 
-			assignmentResp, err := s.fasihService.GetAssignmentByID(ctx, creds, dto.FasihAssignmentByIDRequest{AssignmentID: row.ID})
-			if err != nil {
-				return nil, err
-			}
-
-			openedAtFromDetail, hasOpenedAtFromDetail, err := extractOpenedAtFromDetail(assignmentResp.Data.Data)
-			if err != nil {
-				return nil, err
-			}
-			startedAtFromDetail, hasStartedAtFromDetail, err := extractStartedAtFromDetail(assignmentResp.Data.Data)
-			if err != nil {
-				return nil, err
-			}
-
-			shouldUpsertAssignment := false
-			if hasOpenedAtFromDetail {
-				assignment.OpenedAt = sql.NullTime{Time: openedAtFromDetail, Valid: true}
-				shouldUpsertAssignment = true
-			}
-			if hasStartedAtFromDetail {
-				assignment.StartedAt = sql.NullTime{Time: startedAtFromDetail, Valid: true}
-				shouldUpsertAssignment = true
-			}
-			if shouldUpsertAssignment {
+				assignment := &models.Assignment{
+					SurveyPeriodID: survey.SurveyPeriodID,
+					AssignmentID:   row.ID,
+					RegionFullCode: regionFullCode,
+					RegionLevel1:   regionLevel1,
+					RegionLevel2:   regionLevel2,
+					RegionLevel3:   regionLevel3,
+					RegionLevel4:   regionLevel4,
+					RegionLevel5:   regionLevel5,
+					RegionLevel6:   regionLevel6,
+					Latitude:       row.Latitude,
+					Longitude:      row.Longitude,
+					OpenedAt:       openedAt,
+					StartedAt:      startedAt,
+					SubmittedAt:    submittedAt,
+					RevisedAt:      revisedAt,
+				}
 				if err := s.assignmentRepo.Upsert(assignment); err != nil {
 					return nil, err
 				}
+				result.SavedAssignments++
+
+				if hasExistingAssignment && existingAssignment.RevisedAt.Equal(revisedAt) && existingAssignment.StartedAt.Valid {
+					skippedUnchanged++
+					continue
+				}
+
+				historyResp, err := s.fasihService.GetAssignmentHistoryByID(ctx, creds, dto.FasihAssignmentByIDRequest{AssignmentID: row.ID})
+				if err != nil {
+					return nil, err
+				}
+				logs, err := extractLogsFromHistory(row.ID, historyResp.Data)
+				if err != nil {
+					return nil, err
+				}
+				if err := s.logRepo.ReplaceByAssignmentID(row.ID, logs); err != nil {
+					return nil, err
+				}
+				result.SavedLogs += len(logs)
+
+				assignmentResp, err := s.fasihService.GetAssignmentByID(ctx, creds, dto.FasihAssignmentByIDRequest{AssignmentID: row.ID})
+				if err != nil {
+					return nil, err
+				}
+
+				openedAtFromDetail, hasOpenedAtFromDetail, err := extractOpenedAtFromDetail(assignmentResp.Data.Data)
+				if err != nil {
+					return nil, err
+				}
+				startedAtFromDetail, hasStartedAtFromDetail, err := extractStartedAtFromDetail(assignmentResp.Data.Data)
+				if err != nil {
+					return nil, err
+				}
+
+				shouldUpsertAssignment := false
+				if hasOpenedAtFromDetail {
+					assignment.OpenedAt = sql.NullTime{Time: openedAtFromDetail, Valid: true}
+					shouldUpsertAssignment = true
+				}
+				if hasStartedAtFromDetail {
+					assignment.StartedAt = sql.NullTime{Time: startedAtFromDetail, Valid: true}
+					shouldUpsertAssignment = true
+				}
+				if shouldUpsertAssignment {
+					if err := s.assignmentRepo.Upsert(assignment); err != nil {
+						return nil, err
+					}
+				}
+
+				answers, err := extractAnswersFromDetail(row.ID, assignmentResp.Data.Data)
+				if err != nil {
+					return nil, err
+				}
+				if err := s.answerRepo.ReplaceByAssignmentID(row.ID, answers); err != nil {
+					return nil, err
+				}
+				result.SavedAnswers += len(answers)
+
+				if result.SavedAssignments%10 == 0 {
+					log.Printf("[sync] progress assignments=%d/%d logs=%d answers=%d skipped=%d", result.SavedAssignments, result.TotalAssignments, result.SavedLogs, result.SavedAnswers, skippedUnchanged)
+				}
 			}
 
-			answers, err := extractAnswersFromDetail(row.ID, assignmentResp.Data.Data)
-			if err != nil {
-				return nil, err
+			start += len(datatableResp.SearchData)
+			if start >= datatableResp.TotalHit {
+				log.Printf("[sync] status=%s reached total assignments at offset=%d", syncStatus, start)
+				break
 			}
-			if err := s.answerRepo.ReplaceByAssignmentID(row.ID, answers); err != nil {
-				return nil, err
-			}
-			result.SavedAnswers += len(answers)
-
-			if result.SavedAssignments%10 == 0 {
-				log.Printf("[sync] progress assignments=%d/%d logs=%d answers=%d skipped=%d", result.SavedAssignments, result.TotalAssignments, result.SavedLogs, result.SavedAnswers, skippedUnchanged)
-			}
-		}
-
-		start += len(datatableResp.SearchData)
-		if start >= datatableResp.TotalHit {
-			log.Printf("[sync] reached total assignments at offset=%d", start)
-			break
 		}
 	}
 

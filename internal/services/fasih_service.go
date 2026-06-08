@@ -73,6 +73,7 @@ func (s *FasihService) IsAvailable(ctx context.Context) bool {
 func (s *FasihService) GetAssignmentDatatable(ctx context.Context, creds dto.FasihCredentials, req dto.FasihDatatableRequest) (*dto.FasihDatatableResponse, error) {
 	assignmentExtraParam := map[string]interface{}{
 		"surveyPeriodId":            req.AssignmentExtraParam.SurveyPeriodID,
+		"assignmentStatusAlias":     req.AssignmentExtraParam.AssignmentStatusAlias,
 		"assignmentErrorStatusType": -1,
 		"filterTargetType":          "TARGET_ONLY",
 	}
@@ -97,11 +98,11 @@ func (s *FasihService) GetAssignmentDatatable(ctx context.Context, creds dto.Fas
 	}
 
 	body := map[string]interface{}{
-		"start":   req.Start,
-		"length":  req.Length,
-		"columns": fasihColumns,
-		"order":   []interface{}{},
-		"search":  map[string]interface{}{"value": "", "regex": false},
+		"start":                req.Start,
+		"length":               req.Length,
+		"columns":              fasihColumns,
+		"order":                []interface{}{},
+		"search":               map[string]interface{}{"value": "", "regex": false},
 		"assignmentExtraParam": assignmentExtraParam,
 	}
 

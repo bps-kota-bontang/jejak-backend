@@ -2,6 +2,7 @@ package handlers
 
 import (
 	"fmt"
+	"io"
 	"jejak/internal/dto"
 	apperrors "jejak/internal/errors"
 	"jejak/internal/mappers"
@@ -83,6 +84,66 @@ func (h *SurveyHandler) SyncSurveyAssignments(c fiber.Ctx) error {
 	}
 
 	return respondOK(c, result, "Survey assignments synced successfully")
+}
+
+func (h *SurveyHandler) ImportSurveyRegions(c fiber.Ctx) error {
+	surveyPeriodID := c.Params("surveyPeriodId")
+	if surveyPeriodID == "" {
+		return respondError(c, apperrors.NewHttpError(fiber.StatusBadRequest, "surveyPeriodId is required"))
+	}
+
+	fileHeader, err := c.FormFile("file")
+	if err != nil {
+		return respondError(c, apperrors.NewHttpError(fiber.StatusBadRequest, "file is required"))
+	}
+
+	src, err := fileHeader.Open()
+	if err != nil {
+		return respondError(c, err)
+	}
+	defer src.Close()
+
+	raw, err := io.ReadAll(src)
+	if err != nil {
+		return respondError(c, err)
+	}
+
+	result, err := h.service.ImportSurveyRegions(c.Context(), surveyPeriodID, raw)
+	if err != nil {
+		return respondError(c, err)
+	}
+
+	return respondOK(c, result, "Survey regions imported successfully")
+}
+
+func (h *SurveyHandler) ImportSurveyAssignments(c fiber.Ctx) error {
+	surveyPeriodID := c.Params("surveyPeriodId")
+	if surveyPeriodID == "" {
+		return respondError(c, apperrors.NewHttpError(fiber.StatusBadRequest, "surveyPeriodId is required"))
+	}
+
+	fileHeader, err := c.FormFile("file")
+	if err != nil {
+		return respondError(c, apperrors.NewHttpError(fiber.StatusBadRequest, "file is required"))
+	}
+
+	src, err := fileHeader.Open()
+	if err != nil {
+		return respondError(c, err)
+	}
+	defer src.Close()
+
+	raw, err := io.ReadAll(src)
+	if err != nil {
+		return respondError(c, err)
+	}
+
+	result, err := h.service.ImportSurveyAssignments(c.Context(), surveyPeriodID, raw)
+	if err != nil {
+		return respondError(c, err)
+	}
+
+	return respondOK(c, result, "Survey assignments imported successfully")
 }
 
 func (h *SurveyHandler) GetBySurveyPeriodID(c fiber.Ctx) error {

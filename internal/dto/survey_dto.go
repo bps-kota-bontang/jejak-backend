@@ -154,6 +154,79 @@ type SyncSurveyRegionsResponse struct {
 	SavedRegions  int    `json:"saved_regions"`
 }
 
+type ImportedRegionItem struct {
+	SurveyID       string `json:"survey_id"`
+	SurveyPeriodID string `json:"survey_period_id"`
+	RegionGroupID  string `json:"region_group_id"`
+	Level1         string `json:"level_1"`
+	Level1Label    string `json:"level_1_label"`
+	Level2         string `json:"level_2"`
+	Level2Label    string `json:"level_2_label"`
+	Level3         string `json:"level_3"`
+	Level3Label    string `json:"level_3_label"`
+	Level4         string `json:"level_4"`
+	Level4Label    string `json:"level_4_label"`
+	Level5         string `json:"level_5"`
+	Level5Label    string `json:"level_5_label"`
+	Level6         string `json:"level_6"`
+	Level6Label    string `json:"level_6_label"`
+	FullCode       string `json:"full_code"`
+}
+
+type RegionImportPayload struct {
+	Type           string               `json:"type"`
+	SurveyID       string               `json:"survey_id"`
+	SurveyPeriodID string               `json:"survey_period_id"`
+	RegionGroupID  string               `json:"region_group_id"`
+	LevelCount     int                  `json:"level_count"`
+	Regions        []ImportedRegionItem `json:"regions"`
+}
+
+type ImportedAssignmentItem struct {
+	AssignmentID   string  `json:"assignment_id"`
+	SurveyPeriodID string  `json:"survey_period_id"`
+	RegionFullCode string  `json:"region_full_code"`
+	RegionLevel1   string  `json:"region_level_1"`
+	RegionLevel2   string  `json:"region_level_2"`
+	RegionLevel3   string  `json:"region_level_3"`
+	RegionLevel4   string  `json:"region_level_4"`
+	RegionLevel5   string  `json:"region_level_5"`
+	RegionLevel6   string  `json:"region_level_6"`
+	Latitude       float64 `json:"latitude"`
+	Longitude      float64 `json:"longitude"`
+	OpenedAt       string  `json:"opened_at"`
+	StartedAt      string  `json:"started_at"`
+	SubmittedAt    string  `json:"submitted_at"`
+	RevisedAt      string  `json:"revised_at"`
+}
+
+type ImportedLogItem struct {
+	AssignmentID string  `json:"assignment_id"`
+	Action       string  `json:"action"`
+	Latitude     float64 `json:"latitude"`
+	Longitude    float64 `json:"longitude"`
+	ActionedAt   string  `json:"actioned_at"`
+}
+
+type ImportedAnswerItem struct {
+	AssignmentID string `json:"assignment_id"`
+	Name         string `json:"name"`
+	AnsweredAt   string `json:"answered_at"`
+	RevisedAt    string `json:"revised_at"`
+}
+
+type AssignmentImportPayload struct {
+	Type             string                   `json:"type"`
+	SurveyPeriodID   string                   `json:"survey_period_id"`
+	TotalHit         int                      `json:"total_hit"`
+	Assignments      []ImportedAssignmentItem `json:"assignments"`
+	Logs             []ImportedLogItem        `json:"logs"`
+	Answers          []ImportedAnswerItem     `json:"answers"`
+	SavedAssignments int                      `json:"saved_assignments"`
+	SavedLogs        int                      `json:"saved_logs"`
+	SavedAnswers     int                      `json:"saved_answers"`
+}
+
 type LocationAnswerStat struct {
 	CanonicalID            string  `json:"canonical_id"`
 	Latitude               float64 `json:"latitude"`

@@ -1,6 +1,7 @@
 package services
 
 import (
+	"bytes"
 	"context"
 	"database/sql"
 	"encoding/json"
@@ -298,6 +299,287 @@ func (s *SurveyService) GetRegionsBySurveyPeriodID(surveyPeriodID string, query 
 	}
 
 	return s.surveyRepo.FindBySurveyPeriodIDWithFilter(surveyPeriodID, filter)
+}
+
+func (s *SurveyService) ImportSurveyRegions(ctx context.Context, surveyPeriodID string, raw []byte) (*dto.SyncSurveyRegionsResponse, error) {
+	_ = ctx
+
+	if len(bytes.TrimSpace(raw)) == 0 {
+		return nil, apperrors.NewHttpError(http.StatusBadRequest, "file import region kosong")
+	}
+
+	survey, err := s.surveyRepo.FindBySurveyPeriodID(surveyPeriodID)
+	if err != nil {
+		if err == gorm.ErrRecordNotFound {
+			return nil, apperrors.NewHttpError(http.StatusNotFound, "survey tidak ditemukan")
+		}
+		return nil, err
+	}
+
+	var payload dto.RegionImportPayload
+	if err := json.Unmarshal(raw, &payload); err != nil {
+		return nil, apperrors.NewHttpError(http.StatusBadRequest, "format file region tidak valid")
+	}
+
+	if payloadType := strings.TrimSpace(payload.Type); payloadType != "" && payloadType != "region_sync_export_v1" {
+		return nil, apperrors.NewHttpError(http.StatusBadRequest, "tipe file region tidak didukung")
+	}
+
+	if fileSurveyPeriodID := strings.TrimSpace(payload.SurveyPeriodID); fileSurveyPeriodID != "" && fileSurveyPeriodID != surveyPeriodID {
+		return nil, apperrors.NewHttpError(http.StatusBadRequest, "survey_period_id pada file region tidak sesuai")
+	}
+
+	groupID := strings.TrimSpace(payload.RegionGroupID)
+	if groupID == "" && survey.RegionGroupID != nil {
+		groupID = strings.TrimSpace(*survey.RegionGroupID)
+	}
+	if groupID == "" {
+		return nil, apperrors.NewHttpError(http.StatusBadRequest, "region_group_id pada file region wajib diisi")
+	}
+
+	regions := make([]models.Region, 0, len(payload.Regions))
+	for _, item := range payload.Regions {
+		fullCode := strings.TrimSpace(item.FullCode)
+		if fullCode == "" {
+			continue
+		}
+
+		itemSurveyPeriodID := strings.TrimSpace(item.SurveyPeriodID)
+		if itemSurveyPeriodID != "" && itemSurveyPeriodID != surveyPeriodID {
+			continue
+		}
+
+		itemSurveyID := strings.TrimSpace(item.SurveyID)
+		if itemSurveyID == "" {
+			itemSurveyID = survey.SurveyID
+		}
+
+		itemGroupID := strings.TrimSpace(item.RegionGroupID)
+		if itemGroupID == "" {
+			itemGroupID = groupID
+		}
+
+		regions = append(regions, models.Region{
+			SurveyID:       itemSurveyID,
+			SurveyPeriodID: surveyPeriodID,
+			RegionGroupID:  itemGroupID,
+			Level1:         trimmedPtr(item.Level1),
+			Level1Label:    trimmedPtr(item.Level1Label),
+			Level2:         trimmedPtr(item.Level2),
+			Level2Label:    trimmedPtr(item.Level2Label),
+			Level3:         trimmedPtr(item.Level3),
+			Level3Label:    trimmedPtr(item.Level3Label),
+			Level4:         trimmedPtr(item.Level4),
+			Level4Label:    trimmedPtr(item.Level4Label),
+			Level5:         trimmedPtr(item.Level5),
+			Level5Label:    trimmedPtr(item.Level5Label),
+			Level6:         trimmedPtr(item.Level6),
+			Level6Label:    trimmedPtr(item.Level6Label),
+			FullCode:       fullCode,
+		})
+	}
+
+	if len(regions) == 0 {
+		return nil, apperrors.NewHttpError(http.StatusBadRequest, "tidak ada data region valid di file import")
+	}
+
+	levelCount := payload.LevelCount
+	if levelCount <= 0 {
+		levelCount = inferRegionLevelCount(regions)
+	}
+	if levelCount <= 0 {
+		levelCount = 1
+	}
+
+	if err := s.surveyRepo.UpdateRegionMetadata(surveyPeriodID, groupID, levelCount); err != nil {
+		return nil, err
+	}
+
+	if err := s.surveyRepo.ReplaceSurveyRegions(surveyPeriodID, regions); err != nil {
+		return nil, err
+	}
+
+	if err := s.surveyRepo.UpdateSurveyRegionAssignmentCounts(surveyPeriodID); err != nil {
+		return nil, err
+	}
+
+	return &dto.SyncSurveyRegionsResponse{
+		RegionGroupID: groupID,
+		LevelCount:    levelCount,
+		SavedRegions:  len(regions),
+	}, nil
+}
+
+func (s *SurveyService) ImportSurveyAssignments(ctx context.Context, surveyPeriodID string, raw []byte) (*dto.SyncSurveyAssignmentsResponse, error) {
+	_ = ctx
+
+	if len(bytes.TrimSpace(raw)) == 0 {
+		return nil, apperrors.NewHttpError(http.StatusBadRequest, "file import assignment kosong")
+	}
+
+	if _, err := s.surveyRepo.FindBySurveyPeriodID(surveyPeriodID); err != nil {
+		if err == gorm.ErrRecordNotFound {
+			return nil, apperrors.NewHttpError(http.StatusNotFound, "survey tidak ditemukan")
+		}
+		return nil, err
+	}
+
+	var payload dto.AssignmentImportPayload
+	if err := json.Unmarshal(raw, &payload); err != nil {
+		return nil, apperrors.NewHttpError(http.StatusBadRequest, "format file assignment tidak valid")
+	}
+
+	if payloadType := strings.TrimSpace(payload.Type); payloadType != "" && payloadType != "assignment_sync_export_v1" {
+		return nil, apperrors.NewHttpError(http.StatusBadRequest, "tipe file assignment tidak didukung")
+	}
+
+	if fileSurveyPeriodID := strings.TrimSpace(payload.SurveyPeriodID); fileSurveyPeriodID != "" && fileSurveyPeriodID != surveyPeriodID {
+		return nil, apperrors.NewHttpError(http.StatusBadRequest, "survey_period_id pada file assignment tidak sesuai")
+	}
+
+	logsByAssignment := make(map[string][]models.Log)
+	for _, item := range payload.Logs {
+		assignmentID := strings.TrimSpace(item.AssignmentID)
+		if assignmentID == "" {
+			continue
+		}
+
+		actionedAt, ok, err := parseOptionalFlexibleTime(item.ActionedAt)
+		if err != nil {
+			return nil, apperrors.NewHttpError(http.StatusBadRequest, fmt.Sprintf("format actioned_at tidak valid untuk assignment %s", assignmentID))
+		}
+		if !ok {
+			continue
+		}
+
+		logsByAssignment[assignmentID] = append(logsByAssignment[assignmentID], models.Log{
+			AssignmentID: assignmentID,
+			Action:       strings.TrimSpace(item.Action),
+			Latitude:     item.Latitude,
+			Longitude:    item.Longitude,
+			ActionedAt:   actionedAt,
+		})
+	}
+
+	answersByAssignment := make(map[string][]models.Answer)
+	for _, item := range payload.Answers {
+		assignmentID := strings.TrimSpace(item.AssignmentID)
+		name := strings.TrimSpace(item.Name)
+		if assignmentID == "" || name == "" {
+			continue
+		}
+
+		answeredAt, hasAnsweredAt, err := parseOptionalFlexibleTime(item.AnsweredAt)
+		if err != nil {
+			return nil, apperrors.NewHttpError(http.StatusBadRequest, fmt.Sprintf("format answered_at tidak valid untuk assignment %s", assignmentID))
+		}
+		revisedAt, hasRevisedAt, err := parseOptionalFlexibleTime(item.RevisedAt)
+		if err != nil {
+			return nil, apperrors.NewHttpError(http.StatusBadRequest, fmt.Sprintf("format revised_at tidak valid untuk assignment %s", assignmentID))
+		}
+
+		if !hasAnsweredAt && !hasRevisedAt {
+			continue
+		}
+		if !hasAnsweredAt {
+			answeredAt = revisedAt
+		}
+		if !hasRevisedAt {
+			revisedAt = answeredAt
+		}
+
+		answersByAssignment[assignmentID] = append(answersByAssignment[assignmentID], models.Answer{
+			AssignmentID: assignmentID,
+			Name:         name,
+			AnsweredAt:   answeredAt,
+			RevisedAt:    revisedAt,
+		})
+	}
+
+	result := &dto.SyncSurveyAssignmentsResponse{
+		TotalAssignments: payload.TotalHit,
+	}
+
+	for _, item := range payload.Assignments {
+		assignmentID := strings.TrimSpace(item.AssignmentID)
+		if assignmentID == "" {
+			continue
+		}
+
+		itemSurveyPeriodID := strings.TrimSpace(item.SurveyPeriodID)
+		if itemSurveyPeriodID != "" && itemSurveyPeriodID != surveyPeriodID {
+			continue
+		}
+
+		submittedAt, hasSubmittedAt, err := parseOptionalFlexibleTime(item.SubmittedAt)
+		if err != nil || !hasSubmittedAt {
+			return nil, apperrors.NewHttpError(http.StatusBadRequest, fmt.Sprintf("format submitted_at tidak valid untuk assignment %s", assignmentID))
+		}
+
+		revisedAt, hasRevisedAt, err := parseOptionalFlexibleTime(item.RevisedAt)
+		if err != nil {
+			return nil, apperrors.NewHttpError(http.StatusBadRequest, fmt.Sprintf("format revised_at tidak valid untuk assignment %s", assignmentID))
+		}
+		if !hasRevisedAt {
+			revisedAt = submittedAt
+		}
+
+		openedAt, hasOpenedAt, err := parseOptionalFlexibleTime(item.OpenedAt)
+		if err != nil {
+			return nil, apperrors.NewHttpError(http.StatusBadRequest, fmt.Sprintf("format opened_at tidak valid untuk assignment %s", assignmentID))
+		}
+
+		startedAt, hasStartedAt, err := parseOptionalFlexibleTime(item.StartedAt)
+		if err != nil {
+			return nil, apperrors.NewHttpError(http.StatusBadRequest, fmt.Sprintf("format started_at tidak valid untuk assignment %s", assignmentID))
+		}
+
+		assignment := &models.Assignment{
+			SurveyPeriodID: surveyPeriodID,
+			AssignmentID:   assignmentID,
+			RegionFullCode: trimmedPtr(item.RegionFullCode),
+			RegionLevel1:   trimmedPtr(item.RegionLevel1),
+			RegionLevel2:   trimmedPtr(item.RegionLevel2),
+			RegionLevel3:   trimmedPtr(item.RegionLevel3),
+			RegionLevel4:   trimmedPtr(item.RegionLevel4),
+			RegionLevel5:   trimmedPtr(item.RegionLevel5),
+			RegionLevel6:   trimmedPtr(item.RegionLevel6),
+			Latitude:       item.Latitude,
+			Longitude:      item.Longitude,
+			OpenedAt:       sql.NullTime{Time: openedAt, Valid: hasOpenedAt},
+			StartedAt:      sql.NullTime{Time: startedAt, Valid: hasStartedAt},
+			SubmittedAt:    submittedAt,
+			RevisedAt:      revisedAt,
+		}
+
+		if err := s.assignmentRepo.Upsert(assignment); err != nil {
+			return nil, err
+		}
+
+		result.SavedAssignments++
+
+		logs := logsByAssignment[assignmentID]
+		if err := s.logRepo.ReplaceByAssignmentID(assignmentID, logs); err != nil {
+			return nil, err
+		}
+		result.SavedLogs += len(logs)
+
+		answers := answersByAssignment[assignmentID]
+		if err := s.answerRepo.ReplaceByAssignmentID(assignmentID, answers); err != nil {
+			return nil, err
+		}
+		result.SavedAnswers += len(answers)
+	}
+
+	if result.TotalAssignments == 0 {
+		result.TotalAssignments = result.SavedAssignments
+	}
+
+	if err := s.surveyRepo.UpdateSurveyRegionAssignmentCounts(surveyPeriodID); err != nil {
+		return nil, err
+	}
+
+	return result, nil
 }
 
 func (s *SurveyService) SyncSurveyRegions(ctx context.Context, surveyPeriodID string, req dto.SyncSurveyRegionsRequest) (*dto.SyncSurveyRegionsResponse, error) {
@@ -999,6 +1281,62 @@ func parseDynamicTime(v interface{}) (time.Time, bool) {
 	default:
 		return time.Time{}, false
 	}
+}
+
+func parseOptionalFlexibleTime(raw string) (time.Time, bool, error) {
+	trimmed := strings.TrimSpace(raw)
+	if trimmed == "" {
+		return time.Time{}, false, nil
+	}
+
+	parsed, err := parseFlexibleTime(trimmed)
+	if err != nil {
+		return time.Time{}, false, err
+	}
+
+	return parsed, true, nil
+}
+
+func trimmedPtr(value string) *string {
+	trimmed := strings.TrimSpace(value)
+	if trimmed == "" {
+		return nil
+	}
+	return &trimmed
+}
+
+func inferRegionLevelCount(regions []models.Region) int {
+	maxLevel := 0
+	for _, region := range regions {
+		switch {
+		case region.Level6 != nil && strings.TrimSpace(*region.Level6) != "":
+			if maxLevel < 6 {
+				maxLevel = 6
+			}
+		case region.Level5 != nil && strings.TrimSpace(*region.Level5) != "":
+			if maxLevel < 5 {
+				maxLevel = 5
+			}
+		case region.Level4 != nil && strings.TrimSpace(*region.Level4) != "":
+			if maxLevel < 4 {
+				maxLevel = 4
+			}
+		case region.Level3 != nil && strings.TrimSpace(*region.Level3) != "":
+			if maxLevel < 3 {
+				maxLevel = 3
+			}
+		case region.Level2 != nil && strings.TrimSpace(*region.Level2) != "":
+			if maxLevel < 2 {
+				maxLevel = 2
+			}
+		case region.Level1 != nil && strings.TrimSpace(*region.Level1) != "":
+			if maxLevel < 1 {
+				maxLevel = 1
+			}
+		}
+	}
+
+	return maxLevel
 }
 
 func parseFlexibleTime(raw string) (time.Time, error) {

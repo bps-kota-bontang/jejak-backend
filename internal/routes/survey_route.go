@@ -17,6 +17,8 @@ func RegisterSurveyRoutes(router fiber.Router, handler *handlers.SurveyHandler) 
 	surveys.Get("/:surveyPeriodId/regions/metadata", handler.GetRegionMetadata)
 	surveys.Get("/:surveyPeriodId/regions", handler.GetRegions)
 	surveys.Post("/:surveyPeriodId/regions/sync", handler.SyncSurveyRegions)
+	surveys.Post("/:surveyPeriodId/regions/import", handler.ImportSurveyRegions)
 	surveys.Post("/:surveyPeriodId/sync", handler.SyncSurveyAssignments)
+	surveys.Post("/:surveyPeriodId/assignments/import", handler.ImportSurveyAssignments)
 	surveys.Post("/:surveyPeriodId/analyze", handler.AnalyzeSurvey)
 }

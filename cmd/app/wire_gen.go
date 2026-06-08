@@ -46,7 +46,25 @@ func InitializeApp() (*container.AppContainer, error) {
 	validate := providers.NewValidator()
 	authHandler := handlers.NewAuthHandler(appConfig, authConfig, authService, validate)
 	userHandler := handlers.NewUserHandler(userService, validate)
-	appContainer, err := app.NewFiberApp(appConfig, jwtMiddleware, authHandler, userHandler)
+	surveyRepository := repositories.NewSurveyRepository(db)
+	assignmentRepository := repositories.NewAssignmentRepository(db)
+	logRepository := repositories.NewLogRepository(db)
+	answerRepository := repositories.NewAnswerRepository(db)
+	fasihConfig, err := config.LoadFasihConfig()
+	if err != nil {
+		return nil, err
+	}
+	fasihService := services.NewFasihService(fasihConfig)
+	locationRepository := repositories.NewLocationRepository(db)
+	areaRepository := repositories.NewAreaRepository(db)
+	assignmentService := services.NewAssignmentService(assignmentRepository, logRepository, answerRepository, locationRepository, surveyRepository, areaRepository)
+	surveyService := services.NewSurveyService(surveyRepository, assignmentRepository, logRepository, answerRepository, fasihService, assignmentService)
+	surveyHandler := handlers.NewSurveyHandler(surveyService, validate)
+	assignmentHandler := handlers.NewAssignmentHandler(assignmentService, validate)
+	systemHandler := handlers.NewSystemHandler(fasihService)
+	areaService := services.NewAreaService(areaRepository)
+	areaHandler := handlers.NewAreaHandler(areaService, validate)
+	appContainer, err := app.NewFiberApp(appConfig, jwtMiddleware, authHandler, userHandler, surveyHandler, assignmentHandler, systemHandler, areaHandler)
 	if err != nil {
 		return nil, err
 	}

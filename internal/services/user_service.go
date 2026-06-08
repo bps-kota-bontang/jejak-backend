@@ -3,7 +3,6 @@ package services
 import (
 	"errors"
 	"net/http"
-	"slices"
 	"strings"
 
 	"jejak/internal/dto"
@@ -11,6 +10,7 @@ import (
 	"jejak/internal/mappers"
 	"jejak/internal/models"
 	"jejak/internal/repositories"
+	"jejak/utils"
 
 	"golang.org/x/crypto/bcrypt"
 	"gorm.io/gorm"
@@ -69,20 +69,7 @@ func (s *UserService) GetAllUsers() ([]dto.UserResponse, error) {
 }
 
 func (s *UserService) GetRoleOptions() ([]string, error) {
-	roles, err := s.userRepo.ListDistinctRoles()
-	if err != nil {
-		return nil, err
-	}
-
-	defaults := []string{"admin", "viewer", "operator", "ppk", "ketua"}
-	for _, role := range defaults {
-		if !slices.Contains(roles, role) {
-			roles = append(roles, role)
-		}
-	}
-
-	slices.Sort(roles)
-	return roles, nil
+	return utils.AccountRoles(), nil
 }
 
 func (s *UserService) GetAllPaginated(

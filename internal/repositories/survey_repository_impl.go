@@ -2,6 +2,7 @@ package repositories
 
 import (
 	"jejak/internal/models"
+	"strings"
 
 	"gorm.io/gorm"
 	"gorm.io/gorm/clause"
@@ -23,12 +24,46 @@ func (r *SurveyRepositoryImpl) Upsert(survey *models.Survey) error {
 	return r.db.Clauses(clause.OnConflict{
 		Columns: []clause.Column{{Name: "survey_period_id"}},
 		DoUpdates: clause.AssignmentColumns([]string{
-			"survey_id",
+			"name",
 			"xsrf_token",
 			"cookie",
+			"log_delta_max_mins",
+			"log_date_from",
+			"log_date_to",
 			"updated_at",
 		}),
 	}).Create(survey).Error
+}
+
+func (r *SurveyRepositoryImpl) UpdateBySurveyPeriodID(surveyPeriodID string, survey *models.Survey) error {
+	result := r.db.Model(&models.Survey{}).
+		Where("survey_period_id = ?", surveyPeriodID).
+		Updates(map[string]interface{}{
+			"name":               survey.Name,
+			"xsrf_token":         survey.XSRFToken,
+			"cookie":             survey.Cookie,
+			"log_delta_max_mins": survey.LogDeltaMaxMins,
+			"log_date_from":      survey.LogDateFrom,
+			"log_date_to":        survey.LogDateTo,
+			"updated_at":         gorm.Expr("NOW()"),
+		})
+
+	if result.Error != nil {
+		return result.Error
+	}
+	if result.RowsAffected == 0 {
+		return gorm.ErrRecordNotFound
+	}
+
+	return nil
+}
+
+func (r *SurveyRepositoryImpl) FindAll() ([]models.Survey, error) {
+	var surveys []models.Survey
+	if err := r.db.Find(&surveys).Error; err != nil {
+		return nil, err
+	}
+	return surveys, nil
 }
 
 func (r *SurveyRepositoryImpl) FindByID(id string) (*models.Survey, error) {
@@ -41,8 +76,162 @@ func (r *SurveyRepositoryImpl) FindByID(id string) (*models.Survey, error) {
 
 func (r *SurveyRepositoryImpl) FindBySurveyPeriodID(surveyPeriodID string) (*models.Survey, error) {
 	var survey models.Survey
-	if err := r.db.Where("survey_period_id = ?", surveyPeriodID).First(&survey).Error; err != nil {
+	if err := r.db.Preload("Area").Where("survey_period_id = ?", surveyPeriodID).First(&survey).Error; err != nil {
 		return nil, err
 	}
 	return &survey, nil
+}
+
+func (r *SurveyRepositoryImpl) UpdateRegionMetadata(surveyPeriodID string, groupID string, levelCount int) error {
+	return r.db.Model(&models.Survey{}).
+		Where("survey_period_id = ?", surveyPeriodID).
+		Updates(map[string]interface{}{
+			"region_group_id":    groupID,
+			"region_level_count": levelCount,
+			"updated_at":         gorm.Expr("NOW()"),
+		}).Error
+}
+
+func (r *SurveyRepositoryImpl) UpdateSurveyRegionAssignmentCounts(surveyPeriodID string) error {
+	return r.db.Transaction(func(tx *gorm.DB) error {
+		if err := tx.Model(&models.Region{}).
+			Where("survey_period_id = ?", surveyPeriodID).
+			Update("assignment_count", 0).Error; err != nil {
+			return err
+		}
+
+		return tx.Exec(`
+			UPDATE regions AS r
+			SET assignment_count = counts.assignment_count
+			FROM (
+				SELECT survey_period_id, region_full_code, COUNT(*) AS assignment_count
+				FROM assignments
+				WHERE survey_period_id = ?
+				  AND region_full_code IS NOT NULL
+				  AND region_full_code <> ''
+				GROUP BY survey_period_id, region_full_code
+			) AS counts
+			WHERE r.survey_period_id = counts.survey_period_id
+			  AND r.full_code = counts.region_full_code
+		`, surveyPeriodID).Error
+	})
+}
+
+func (r *SurveyRepositoryImpl) ReplaceSurveyRegions(surveyPeriodID string, regions []models.Region) error {
+	return r.db.Transaction(func(tx *gorm.DB) error {
+		if err := tx.Where("survey_period_id = ?", surveyPeriodID).Delete(&models.Region{}).Error; err != nil {
+			return err
+		}
+
+		if len(regions) == 0 {
+			return nil
+		}
+
+		return tx.Create(&regions).Error
+	})
+}
+
+func (r *SurveyRepositoryImpl) FindSurveyRegionsByLevel(surveyPeriodID string, level int, parentFullCode string) ([]models.Region, error) {
+	if level < 1 || level > 6 {
+		return nil, gorm.ErrInvalidData
+	}
+
+	fullCodeExpr := "CONCAT(COALESCE(level1, ''), COALESCE(level2, ''), COALESCE(level3, ''), COALESCE(level4, ''), COALESCE(level5, ''), COALESCE(level6, ''))"
+	parentExpr := "''"
+	groupFields := []string{"survey_period_id"}
+	selectParts := []string{
+		"MIN(id::text) AS id",
+		"MIN(survey_id) AS survey_id",
+		"survey_period_id",
+		"MIN(region_group_id) AS region_group_id",
+	}
+
+	if level >= 1 {
+		groupFields = append(groupFields, "level1")
+		selectParts = append(selectParts, "level1", "MIN(level1_label) AS level1_label")
+		fullCodeExpr = "CONCAT(COALESCE(level1, ''))"
+	}
+	if level >= 2 {
+		groupFields = append(groupFields, "level2")
+		selectParts = append(selectParts, "level2", "MIN(level2_label) AS level2_label")
+		fullCodeExpr = "CONCAT(COALESCE(level1, ''), COALESCE(level2, ''))"
+		parentExpr = "CONCAT(COALESCE(level1, ''))"
+	}
+	if level >= 3 {
+		groupFields = append(groupFields, "level3")
+		selectParts = append(selectParts, "level3", "MIN(level3_label) AS level3_label")
+		fullCodeExpr = "CONCAT(COALESCE(level1, ''), COALESCE(level2, ''), COALESCE(level3, ''))"
+		parentExpr = "CONCAT(COALESCE(level1, ''), COALESCE(level2, ''))"
+	}
+	if level >= 4 {
+		groupFields = append(groupFields, "level4")
+		selectParts = append(selectParts, "level4", "MIN(level4_label) AS level4_label")
+		fullCodeExpr = "CONCAT(COALESCE(level1, ''), COALESCE(level2, ''), COALESCE(level3, ''), COALESCE(level4, ''))"
+		parentExpr = "CONCAT(COALESCE(level1, ''), COALESCE(level2, ''), COALESCE(level3, ''))"
+	}
+	if level >= 5 {
+		groupFields = append(groupFields, "level5")
+		selectParts = append(selectParts, "level5", "MIN(level5_label) AS level5_label")
+		fullCodeExpr = "CONCAT(COALESCE(level1, ''), COALESCE(level2, ''), COALESCE(level3, ''), COALESCE(level4, ''), COALESCE(level5, ''))"
+		parentExpr = "CONCAT(COALESCE(level1, ''), COALESCE(level2, ''), COALESCE(level3, ''), COALESCE(level4, ''))"
+	}
+	if level >= 6 {
+		groupFields = append(groupFields, "level6")
+		selectParts = append(selectParts, "level6", "MIN(level6_label) AS level6_label")
+		fullCodeExpr = "CONCAT(COALESCE(level1, ''), COALESCE(level2, ''), COALESCE(level3, ''), COALESCE(level4, ''), COALESCE(level5, ''), COALESCE(level6, ''))"
+		parentExpr = "CONCAT(COALESCE(level1, ''), COALESCE(level2, ''), COALESCE(level3, ''), COALESCE(level4, ''), COALESCE(level5, ''))"
+	}
+
+	selectParts = append(selectParts, fullCodeExpr+" AS full_code")
+
+	query := r.db.Model(&models.Region{}).
+		Where("survey_period_id = ?", surveyPeriodID).
+		Where("level1 IS NOT NULL").
+		Select(strings.Join(selectParts, ", ")).
+		Group(strings.Join(groupFields, ", ")).
+		Order("full_code ASC")
+
+	if parentFullCode != "" && level > 1 {
+		query = query.Where(parentExpr+" = ?", parentFullCode)
+	}
+
+	var regions []models.Region
+	if err := query.Find(&regions).Error; err != nil {
+		return nil, err
+	}
+
+	return regions, nil
+}
+
+func (r *SurveyRepositoryImpl) FindBySurveyPeriodIDWithFilter(surveyPeriodID string, filter AssignmentRegionFilter) ([]models.Region, error) {
+	query := r.db.Where("survey_period_id = ?", surveyPeriodID)
+
+	if strings.TrimSpace(filter.RegionFullCode) != "" {
+		query = query.Where("full_code = ?", strings.TrimSpace(filter.RegionFullCode))
+	}
+	if strings.TrimSpace(filter.RegionLevel1) != "" {
+		query = query.Where("level1 = ?", strings.TrimSpace(filter.RegionLevel1))
+	}
+	if strings.TrimSpace(filter.RegionLevel2) != "" {
+		query = query.Where("level2 = ?", strings.TrimSpace(filter.RegionLevel2))
+	}
+	if strings.TrimSpace(filter.RegionLevel3) != "" {
+		query = query.Where("level3 = ?", strings.TrimSpace(filter.RegionLevel3))
+	}
+	if strings.TrimSpace(filter.RegionLevel4) != "" {
+		query = query.Where("level4 = ?", strings.TrimSpace(filter.RegionLevel4))
+	}
+	if strings.TrimSpace(filter.RegionLevel5) != "" {
+		query = query.Where("level5 = ?", strings.TrimSpace(filter.RegionLevel5))
+	}
+	if strings.TrimSpace(filter.RegionLevel6) != "" {
+		query = query.Where("level6 = ?", strings.TrimSpace(filter.RegionLevel6))
+	}
+
+	var regions []models.Region
+	if err := query.Order("full_code ASC").Find(&regions).Error; err != nil {
+		return nil, err
+	}
+
+	return regions, nil
 }

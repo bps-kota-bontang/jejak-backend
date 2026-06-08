@@ -3,45 +3,181 @@ package dto
 import "time"
 
 type CreateSurveyRequest struct {
-	SurveyID       string `json:"surveyId" validate:"required"`
-	SurveyPeriodID string `json:"surveyPeriodId" validate:"required"`
-	XSRFToken      string `json:"xsrfToken" validate:"required"`
-	Cookie         string `json:"cookie" validate:"required"`
+	Name            string  `json:"name" validate:"required"`
+	SurveyID        string  `json:"survey_id" validate:"required"`
+	SurveyPeriodID  string  `json:"survey_period_id" validate:"required"`
+	XSRFToken       string  `json:"xsrf_token" validate:"required"`
+	Cookie          string  `json:"cookie" validate:"required"`
+	RegionLevel1    string  `json:"region_level_1" validate:"required"`
+	RegionLevel2    string  `json:"region_level_2" validate:"required"`
+	LogDeltaMaxMins *int    `json:"log_delta_max_minutes,omitempty" validate:"omitempty,min=1"`
+	LogDateFrom     *string `json:"log_date_from,omitempty"`
+	LogDateTo       *string `json:"log_date_to,omitempty"`
+	AreaID          string  `json:"area_id" validate:"required"`
+	GeoJSONKey      string  `json:"geojson_key" validate:"required"`
 }
 
-type SyncSurveyAssignmentsRequest struct {
-	SurveyPeriodID            string `json:"surveyPeriodId" validate:"required"`
-	AssignmentErrorStatusType int    `json:"assignmentErrorStatusType"`
-	AssignmentStatusAlias     string `json:"assignmentStatusAlias"`
-	FilterTargetType          string `json:"filterTargetType"`
+type UpdateSurveyRequest struct {
+	Name            string  `json:"name" validate:"required"`
+	SurveyID        string  `json:"survey_id" validate:"required"`
+	XSRFToken       string  `json:"xsrf_token" validate:"required"`
+	Cookie          string  `json:"cookie" validate:"required"`
+	RegionLevel1    string  `json:"region_level_1" validate:"required"`
+	RegionLevel2    string  `json:"region_level_2" validate:"required"`
+	LogDeltaMaxMins *int    `json:"log_delta_max_minutes,omitempty" validate:"omitempty,min=1"`
+	LogDateFrom     *string `json:"log_date_from,omitempty"`
+	LogDateTo       *string `json:"log_date_to,omitempty"`
+	AreaID          string  `json:"area_id" validate:"required"`
+	GeoJSONKey      string  `json:"geojson_key" validate:"required"`
+}
+
+type SurveyResponse struct {
+	ID               string        `json:"id"`
+	Name             string        `json:"name"`
+	SurveyID         string        `json:"survey_id"`
+	SurveyPeriodID   string        `json:"survey_period_id"`
+	XSRFToken        string        `json:"xsrf_token"`
+	Cookie           string        `json:"cookie"`
+	RegionLevel1     string        `json:"region_level_1,omitempty"`
+	RegionLevel2     string        `json:"region_level_2,omitempty"`
+	LogDeltaMaxMins  *int          `json:"log_delta_max_minutes,omitempty"`
+	LogDateFrom      *string       `json:"log_date_from,omitempty"`
+	LogDateTo        *string       `json:"log_date_to,omitempty"`
+	RegionGroupID    *string       `json:"region_group_id,omitempty"`
+	RegionLevelCount *int          `json:"region_level_count,omitempty"`
+	AreaID           string        `json:"area_id,omitempty"`
+	GeoJSONKey       string        `json:"geojson_key,omitempty"`
+	Area             *AreaResponse `json:"area,omitempty"`
+	CreatedAt        time.Time     `json:"created_at"`
+	UpdatedAt        time.Time     `json:"updated_at"`
+}
+
+type AssignmentResponse struct {
+	ID             string               `json:"id"`
+	SurveyPeriodID string               `json:"survey_period_id"`
+	AssignmentID   string               `json:"assignment_id"`
+	RegionFullCode *string              `json:"region_full_code,omitempty"`
+	RegionLevel1   *string              `json:"region_level_1,omitempty"`
+	RegionLevel2   *string              `json:"region_level_2,omitempty"`
+	RegionLevel3   *string              `json:"region_level_3,omitempty"`
+	RegionLevel4   *string              `json:"region_level_4,omitempty"`
+	RegionLevel5   *string              `json:"region_level_5,omitempty"`
+	RegionLevel6   *string              `json:"region_level_6,omitempty"`
+	Latitude       float64              `json:"latitude"`
+	Longitude      float64              `json:"longitude"`
+	OpenedAt       *time.Time           `json:"opened_at,omitempty"`
+	StartedAt      *time.Time           `json:"started_at,omitempty"`
+	SubmittedAt    time.Time            `json:"submitted_at"`
+	RevisedAt      time.Time            `json:"revised_at"`
+	IsViolation    bool                 `json:"is_violation"`
+	ViolationNote  *string              `json:"violation_note,omitempty"`
+	ViolationScore *float64             `json:"violation_score,omitempty"`
+	Locations      []LocationAnswerStat `json:"locations,omitempty"`
+	CreatedAt      time.Time            `json:"created_at"`
+	UpdatedAt      time.Time            `json:"updated_at"`
+}
+
+type AssignmentLogPointResponse struct {
+	ID           string    `json:"id"`
+	AssignmentID string    `json:"assignment_id"`
+	Action       string    `json:"action"`
+	Latitude     float64   `json:"latitude"`
+	Longitude    float64   `json:"longitude"`
+	ActionedAt   time.Time `json:"actioned_at"`
+}
+
+type AssignmentRegionFilterQuery struct {
+	RegionFullCode string `json:"region_full_code,omitempty"`
+	RegionLevel1   string `json:"region_level_1,omitempty"`
+	RegionLevel2   string `json:"region_level_2,omitempty"`
+	RegionLevel3   string `json:"region_level_3,omitempty"`
+	RegionLevel4   string `json:"region_level_4,omitempty"`
+	RegionLevel5   string `json:"region_level_5,omitempty"`
+	RegionLevel6   string `json:"region_level_6,omitempty"`
 }
 
 type SyncSurveyAssignmentsResponse struct {
-	TotalAssignments int `json:"totalAssignments"`
-	SavedAssignments int `json:"savedAssignments"`
-	SavedLogs        int `json:"savedLogs"`
-	SavedAnswers     int `json:"savedAnswers"`
+	TotalAssignments int `json:"total_assignments"`
+	SavedAssignments int `json:"saved_assignments"`
+	SavedLogs        int `json:"saved_logs"`
+	SavedAnswers     int `json:"saved_answers"`
+}
+
+type SyncSurveyRegionsRequest struct {
+	RegionGroupID string `json:"region_group_id,omitempty"`
+}
+
+type SurveyRegionMetadataLevelResponse struct {
+	ID   int    `json:"id"`
+	Name string `json:"name"`
+}
+
+type SurveyRegionMetadataResponse struct {
+	RegionGroupID       string                              `json:"region_group_id"`
+	LevelCount          int                                 `json:"level_count"`
+	SmallestRegionLevel string                              `json:"smallest_region_level"`
+	GroupName           string                              `json:"group_name"`
+	IsActive            bool                                `json:"is_active"`
+	IsPublic            bool                                `json:"is_public"`
+	Level               []SurveyRegionMetadataLevelResponse `json:"level"`
+}
+
+type SurveyRegionResponse struct {
+	ID              string  `json:"id"`
+	SurveyID        string  `json:"survey_id"`
+	SurveyPeriodID  string  `json:"survey_period_id"`
+	RegionGroupID   string  `json:"region_group_id"`
+	AssignmentCount int     `json:"assignment_count"`
+	Level1          *string `json:"level_1,omitempty"`
+	Level1Label     *string `json:"level_1_label,omitempty"`
+	Level2          *string `json:"level_2,omitempty"`
+	Level2Label     *string `json:"level_2_label,omitempty"`
+	Level3          *string `json:"level_3,omitempty"`
+	Level3Label     *string `json:"level_3_label,omitempty"`
+	Level4          *string `json:"level_4,omitempty"`
+	Level4Label     *string `json:"level_4_label,omitempty"`
+	Level5          *string `json:"level_5,omitempty"`
+	Level5Label     *string `json:"level_5_label,omitempty"`
+	Level6          *string `json:"level_6,omitempty"`
+	Level6Label     *string `json:"level_6_label,omitempty"`
+	FullCode        string  `json:"full_code"`
+}
+
+type SurveyRegionFilterQuery struct {
+	Level          int    `json:"level"`
+	ParentFullCode string `json:"parent_full_code,omitempty"`
+}
+
+type SyncSurveyRegionsResponse struct {
+	RegionGroupID string `json:"region_group_id"`
+	LevelCount    int    `json:"level_count"`
+	SavedRegions  int    `json:"saved_regions"`
 }
 
 type LocationAnswerStat struct {
-	CanonicalID string
-	Latitude    float64
-	Longitude   float64
-	AnswerCount int
-	Proportion  float64
+	CanonicalID            string  `json:"canonical_id"`
+	Latitude               float64 `json:"latitude"`
+	Longitude              float64 `json:"longitude"`
+	AnswerCount            int     `json:"answer_count"`
+	Proportion             float64 `json:"proportion"`
+	DistanceToSampleMeters float64 `json:"distance_to_sample_meters"`
+	WithinSampleAreaRadius bool    `json:"within_sample_area_radius"`
 }
 
 type AssignmentSurveyAnalysis struct {
-	AssignmentID   string
-	SurveyPeriodID string
-	TotalAnswers   int
-	Locations      []LocationAnswerStat
+	AssignmentID          string               `json:"assignment_id"`
+	SurveyPeriodID        string               `json:"survey_period_id"`
+	TotalAnswers          int                  `json:"total_answers"`
+	Locations             []LocationAnswerStat `json:"locations"`
+	OutsideAreaProportion float64              `json:"outside_area_proportion"`
+	IsViolation           bool                 `json:"is_violation"`
+	ViolationScore        *float64             `json:"violation_score,omitempty"`
 }
 
 type SurveyFraudAnalysisResult struct {
-	SurveyPeriodID      string
-	TotalAssignments    int
-	AnalyzedAssignments int
-	GeneratedAt         time.Time
-	Assignments         []AssignmentSurveyAnalysis
+	SurveyPeriodID      string                     `json:"survey_period_id"`
+	TotalAssignments    int                        `json:"total_assignments"`
+	AnalyzedAssignments int                        `json:"analyzed_assignments"`
+	GeneratedAt         time.Time                  `json:"generated_at"`
+	Assignments         []AssignmentSurveyAnalysis `json:"assignments"`
 }

@@ -2,6 +2,8 @@ package utils
 
 import "slices"
 
+var accountRoles = []string{"admin", "user"}
+
 func HasRole(roles []string, role string) bool {
 	return slices.Contains(roles, role)
 }
@@ -18,6 +20,13 @@ func HasAnyRole(roles []string, requiredRoles ...string) bool {
 
 func IsAdmin(roles []string) bool {
 	return HasRole(roles, "admin")
+}
+
+func AccountRoles() []string {
+	roles := make([]string, len(accountRoles))
+	copy(roles, accountRoles)
+
+	return roles
 }
 
 func IsViewer(roles []string) bool {

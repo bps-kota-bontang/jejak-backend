@@ -43,10 +43,12 @@ func NewDBConnection(cfg *config.DatabaseConfig) (*gorm.DB, error) {
 	if err := db.AutoMigrate(
 		&models.User{},
 		&models.Survey{},
+		&models.Region{},
 		&models.Assignment{},
 		&models.Log{},
 		&models.Answer{},
 		&models.Location{},
+		&models.Area{},
 	); err != nil {
 		log.Fatalf("Failed to apply database migrations: %v", err)
 		return nil, err

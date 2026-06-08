@@ -50,11 +50,22 @@ type FasihAssignmentByIDRequest struct {
 	AssignmentID string
 }
 
+type FasihRegionMetadataRequest struct {
+	GroupID string
+}
+
+type FasihRegionListRequest struct {
+	GroupID        string
+	Level          int
+	ParentFullCode string
+}
+
+type FasihSurveyByIDRequest struct {
+	SurveyID string
+}
+
 type FasihAssignmentExtraParam struct {
-	SurveyPeriodID            string `json:"surveyPeriodId"`
-	AssignmentErrorStatusType int    `json:"assignmentErrorStatusType"`
-	AssignmentStatusAlias     string `json:"assignmentStatusAlias"`
-	FilterTargetType          string `json:"filterTargetType"`
+	SurveyPeriodID string `json:"surveyPeriodId"`
 }
 
 type FasihParadataPayload struct {
@@ -69,11 +80,14 @@ type FasihActionLogEntity struct {
 }
 
 type FasihAnswerPayload struct {
-	Answers []FasihAnswerItem `json:"answers"`
+	Answers   []FasihAnswerItem `json:"answers"`
+	CreatedAt interface{}       `json:"createdAt"`
+	UpdatedAt interface{}       `json:"updatedAt"`
 }
 
 type FasihAnswerItem struct {
 	DataKey   string      `json:"dataKey"`
+	Answer    interface{} `json:"answer"`
 	CreatedAt interface{} `json:"createdAt"`
 	UpdatedAt interface{} `json:"updatedAt"`
 }
@@ -193,12 +207,47 @@ type FasihRegionMetadata struct {
 	LevelCount          int                        `json:"levelCount"`
 	SmallestRegionLevel string                     `json:"smallestRegionLevel"`
 	GroupName           string                     `json:"groupName"`
+	IsActive            bool                       `json:"isActive"`
+	IsPublic            bool                       `json:"isPublic"`
 	Level               []FasihRegionMetadataLevel `json:"level"`
 }
 
 type FasihRegionMetadataLevel struct {
 	ID   int    `json:"id"`
 	Name string `json:"name"`
+}
+
+type FasihRegionMetadataByGroupResponse struct {
+	Success   bool                `json:"success"`
+	Message   string              `json:"message"`
+	Data      FasihRegionMetadata `json:"data"`
+	ErrorCode *string             `json:"errorCode"`
+}
+
+type FasihRegionListResponse struct {
+	Success   bool              `json:"success"`
+	Message   string            `json:"message"`
+	Data      []FasihRegionItem `json:"data"`
+	ErrorCode *string           `json:"errorCode"`
+}
+
+type FasihRegionItem struct {
+	ID       string `json:"id"`
+	FullCode string `json:"fullCode"`
+	Code     string `json:"code"`
+	Name     string `json:"name"`
+}
+
+type FasihSurveyByIDResponse struct {
+	Success   bool                `json:"success"`
+	Message   string              `json:"message"`
+	Data      FasihSurveyByIDData `json:"data"`
+	ErrorCode *string             `json:"errorCode"`
+}
+
+type FasihSurveyByIDData struct {
+	ID            string `json:"id"`
+	RegionGroupID string `json:"regionGroupId"`
 }
 
 type FasihAssignmentByIDResponse struct {

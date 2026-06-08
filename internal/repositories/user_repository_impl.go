@@ -56,7 +56,7 @@ func (u *UserRepositoryImpl) Update(user *models.User) error {
 // FindAll implements UserRepository.
 func (u *UserRepositoryImpl) FindAll() ([]models.User, error) {
 	var users []models.User
-	if err := u.db.Omit("password").Preload("Teams").Find(&users).Error; err != nil {
+	if err := u.db.Omit("password").Find(&users).Error; err != nil {
 		return nil, err
 	}
 	return users, nil
@@ -74,7 +74,7 @@ func (u *UserRepositoryImpl) FindByEmail(email string) (*models.User, error) {
 // FindByID implements UserRepository.
 func (u *UserRepositoryImpl) FindByID(id string) (*models.User, error) {
 	var user *models.User
-	if err := u.db.Omit("password").Preload("Teams").Where("id = ?", id).First(&user).Error; err != nil {
+	if err := u.db.Omit("password").Where("id = ?", id).First(&user).Error; err != nil {
 		return nil, err
 	}
 	return user, nil
@@ -182,7 +182,7 @@ func (u *UserRepositoryImpl) FindPaginated(search string, limit, offset int, sor
 	}
 
 	var users []models.User
-	if err := query.Preload("Teams").Order(field + " " + sortOrder).Limit(limit).Offset(offset).Find(&users).Error; err != nil {
+	if err := query.Order(field + " " + sortOrder).Limit(limit).Offset(offset).Find(&users).Error; err != nil {
 		return nil, err
 	}
 	return users, nil

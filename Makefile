@@ -1,4 +1,4 @@
-.PHONY: wire run run-worker run-scheduler run-survey build build-worker build-scheduler dev dev-worker dev-scheduler generate hot
+.PHONY: wire run run-worker run-scheduler run-survey run-survey-sync-region build build-worker build-scheduler dev dev-worker dev-scheduler generate hot
 
 # Generate wire_gen.go
 wire:
@@ -31,6 +31,10 @@ run-scheduler:
 # Run survey command
 run-survey:
 	go run ./cmd/survey $(ARGS)
+
+# Run survey region sync command
+run-survey-sync-region:
+	go run ./cmd/survey sync-region
 
 # Build app binary
 build:

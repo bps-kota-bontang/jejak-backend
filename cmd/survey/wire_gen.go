@@ -35,7 +35,8 @@ func InitializeSurvey() (*container.SurveyContainer, error) {
 	}
 	fasihService := services.NewFasihService(fasihConfig)
 	locationRepository := repositories.NewLocationRepository(db)
-	assignmentService := services.NewAssignmentService(assignmentRepository, logRepository, answerRepository, locationRepository)
+	areaRepository := repositories.NewAreaRepository(db)
+	assignmentService := services.NewAssignmentService(assignmentRepository, logRepository, answerRepository, locationRepository, surveyRepository, areaRepository)
 	surveyService := services.NewSurveyService(surveyRepository, assignmentRepository, logRepository, answerRepository, fasihService, assignmentService)
 	surveyContainer := container.NewSurveyContainer(surveyService)
 	return surveyContainer, nil

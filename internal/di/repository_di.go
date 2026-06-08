@@ -13,4 +13,5 @@ var RepositorySet = wire.NewSet(
 	repositories.NewLogRepository,
 	repositories.NewAnswerRepository,
 	repositories.NewLocationRepository,
+	repositories.NewAreaRepository,
 )

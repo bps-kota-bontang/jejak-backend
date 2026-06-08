@@ -19,6 +19,8 @@ import (
 const fasihDatatablePath = "/app/api/analytic/api/v2/assignment/datatable-all-user-survey-periode"
 const fasihAssignmentByIDPath = "/app/api/assignment-general/api/assignment/get-by-assignment-id"
 const fasihAssignmentHistoryByIDPath = "/app/api/assignment-general/api/assignment-history/get-by-assignment-id"
+const fasihRegionMetadataPath = "/app/api/region/api/v1/region-metadata"
+const fasihSurveyByIDPath = "/app/api/survey/api/v1/surveys"
 
 var fasihColumns = []map[string]interface{}{
 	{"data": "id", "orderable": true},
@@ -43,6 +45,31 @@ func NewFasihService(cfg *config.FasihConfig) *FasihService {
 	return &FasihService{cfg: cfg}
 }
 
+func (s *FasihService) IsAvailable(ctx context.Context) bool {
+	endpoint, err := url.Parse(s.cfg.BaseURL)
+	if err != nil {
+		return false
+	}
+
+	checkCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
+	defer cancel()
+
+	request, err := http.NewRequestWithContext(checkCtx, http.MethodGet, endpoint.String(), nil)
+	if err != nil {
+		return false
+	}
+
+	client := &http.Client{Timeout: 5 * time.Second}
+	response, err := client.Do(request)
+	if err != nil {
+		return false
+	}
+	defer response.Body.Close()
+	_, _ = io.Copy(io.Discard, response.Body)
+
+	return true
+}
+
 func (s *FasihService) GetAssignmentDatatable(ctx context.Context, creds dto.FasihCredentials, req dto.FasihDatatableRequest) (*dto.FasihDatatableResponse, error) {
 	body := map[string]interface{}{
 		"start":   req.Start,
@@ -52,9 +79,8 @@ func (s *FasihService) GetAssignmentDatatable(ctx context.Context, creds dto.Fas
 		"search":  map[string]interface{}{"value": "", "regex": false},
 		"assignmentExtraParam": map[string]interface{}{
 			"surveyPeriodId":            req.AssignmentExtraParam.SurveyPeriodID,
-			"assignmentErrorStatusType": req.AssignmentExtraParam.AssignmentErrorStatusType,
-			"assignmentStatusAlias":     req.AssignmentExtraParam.AssignmentStatusAlias,
-			"filterTargetType":          req.AssignmentExtraParam.FilterTargetType,
+			"assignmentErrorStatusType": -1,
+			"filterTargetType":          "TARGET_ONLY",
 		},
 	}
 
@@ -152,6 +178,116 @@ func (s *FasihService) GetAssignmentHistoryByID(ctx context.Context, creds dto.F
 
 	var result dto.FasihAssignmentHistoryByIDResponse
 	if err := decodeFasihJSONResponse(resp, &result, fasihAssignmentHistoryByIDPath); err != nil {
+		return nil, err
+	}
+
+	return &result, nil
+}
+
+func (s *FasihService) GetRegionMetadata(ctx context.Context, creds dto.FasihCredentials, req dto.FasihRegionMetadataRequest) (*dto.FasihRegionMetadataByGroupResponse, error) {
+	if req.GroupID == "" {
+		return nil, errors.New("fasih: region group id is required")
+	}
+
+	endpoint, err := url.Parse(s.cfg.BaseURL + fasihRegionMetadataPath)
+	if err != nil {
+		return nil, err
+	}
+
+	query := endpoint.Query()
+	query.Set("id", req.GroupID)
+	endpoint.RawQuery = query.Encode()
+
+	httpReq, err := http.NewRequestWithContext(ctx, http.MethodGet, endpoint.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	setFasihHeaders(httpReq, creds)
+
+	client := &http.Client{Timeout: 30 * time.Second}
+	resp, err := client.Do(httpReq)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+
+	var result dto.FasihRegionMetadataByGroupResponse
+	if err := decodeFasihJSONResponse(resp, &result, fasihRegionMetadataPath); err != nil {
+		return nil, err
+	}
+
+	return &result, nil
+}
+
+func (s *FasihService) GetSurveyByID(ctx context.Context, creds dto.FasihCredentials, req dto.FasihSurveyByIDRequest) (*dto.FasihSurveyByIDResponse, error) {
+	if req.SurveyID == "" {
+		return nil, errors.New("fasih: survey id is required")
+	}
+
+	httpReq, err := http.NewRequestWithContext(ctx, http.MethodGet, s.cfg.BaseURL+fasihSurveyByIDPath+"/"+req.SurveyID, nil)
+	if err != nil {
+		return nil, err
+	}
+
+	setFasihHeaders(httpReq, creds)
+
+	client := &http.Client{Timeout: 30 * time.Second}
+	resp, err := client.Do(httpReq)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+
+	var result dto.FasihSurveyByIDResponse
+	if err := decodeFasihJSONResponse(resp, &result, fasihSurveyByIDPath+"/{surveyId}"); err != nil {
+		return nil, err
+	}
+
+	return &result, nil
+}
+
+func (s *FasihService) GetRegionsByLevel(ctx context.Context, creds dto.FasihCredentials, req dto.FasihRegionListRequest) (*dto.FasihRegionListResponse, error) {
+	if req.GroupID == "" {
+		return nil, errors.New("fasih: region group id is required")
+	}
+
+	if req.Level < 1 {
+		return nil, errors.New("fasih: level must be greater than zero")
+	}
+
+	path := fmt.Sprintf("/app/api/region/api/v1/region/level%d", req.Level)
+	endpoint, err := url.Parse(s.cfg.BaseURL + path)
+	if err != nil {
+		return nil, err
+	}
+
+	query := endpoint.Query()
+	query.Set("groupId", req.GroupID)
+	if req.Level > 1 {
+		if req.ParentFullCode == "" {
+			return nil, errors.New("fasih: parent full code is required for level greater than one")
+		}
+		query.Set(fmt.Sprintf("level%dFullCode", req.Level-1), req.ParentFullCode)
+	}
+	endpoint.RawQuery = query.Encode()
+
+	httpReq, err := http.NewRequestWithContext(ctx, http.MethodGet, endpoint.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	setFasihHeaders(httpReq, creds)
+
+	client := &http.Client{Timeout: 30 * time.Second}
+	resp, err := client.Do(httpReq)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+
+	var result dto.FasihRegionListResponse
+	if err := decodeFasihJSONResponse(resp, &result, path); err != nil {
 		return nil, err
 	}
 

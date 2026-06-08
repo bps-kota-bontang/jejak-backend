@@ -15,13 +15,13 @@ type CreateUserRequest struct {
 	Username string   `json:"username" validate:"required"`
 	Email    string   `json:"email" validate:"required,email"`
 	Password *string  `json:"password,omitempty" validate:"omitempty,min=8"`
-	Roles    []string `json:"roles"`
+	Roles    []string `json:"roles" validate:"required,min=1,dive,oneof=user admin"`
 }
 
 type UpdateUserRequest struct {
 	Username *string  `json:"username,omitempty"`
 	Email    *string  `json:"email,omitempty" validate:"omitempty,email"`
-	Roles    []string `json:"roles,omitempty"`
+	Roles    []string `json:"roles,omitempty" validate:"omitempty,dive,oneof=user admin"`
 }
 
 type UpdateMyPasswordRequest struct {

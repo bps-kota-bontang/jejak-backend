@@ -2,6 +2,7 @@ package repositories
 
 import (
 	"jejak/internal/models"
+	"time"
 
 	"gorm.io/gorm"
 )
@@ -31,5 +32,31 @@ func (r *LogRepositoryImpl) FindByAssignmentID(assignmentID string) ([]models.Lo
 	if err := r.db.Where("assignment_id = ?", assignmentID).Find(&logs).Error; err != nil {
 		return nil, err
 	}
+	return logs, nil
+}
+
+func (r *LogRepositoryImpl) FindBySurveyPeriodIDRegionFullCodeAndActionedAt(
+	surveyPeriodID string,
+	regionFullCode string,
+	actionedAtFrom *time.Time,
+	actionedAtTo *time.Time,
+) ([]models.Log, error) {
+	query := r.db.Model(&models.Log{}).
+		Joins("JOIN assignments ON assignments.assignment_id = logs.assignment_id").
+		Where("assignments.survey_period_id = ?", surveyPeriodID).
+		Where("assignments.region_full_code = ?", regionFullCode)
+
+	if actionedAtFrom != nil {
+		query = query.Where("logs.actioned_at >= ?", *actionedAtFrom)
+	}
+	if actionedAtTo != nil {
+		query = query.Where("logs.actioned_at <= ?", *actionedAtTo)
+	}
+
+	var logs []models.Log
+	if err := query.Find(&logs).Error; err != nil {
+		return nil, err
+	}
+
 	return logs, nil
 }

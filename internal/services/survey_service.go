@@ -6,11 +6,14 @@ import (
 	"encoding/json"
 	"fmt"
 	"log"
+	"net/http"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
 
 	"jejak/internal/dto"
+	apperrors "jejak/internal/errors"
 	"jejak/internal/models"
 	"jejak/internal/repositories"
 
@@ -27,6 +30,14 @@ type SurveyService struct {
 }
 
 const maxSyncPageLength = 50
+
+var defaultGMTPlus8 = time.FixedZone("GMT+8", 8*60*60)
+
+type regionNode struct {
+	fullCode string
+	levels   [6]*string
+	labels   [6]*string
+}
 
 func NewSurveyService(
 	surveyRepo repositories.SurveyRepository,
@@ -79,24 +90,451 @@ func (s *SurveyService) AnalyzeSurvey(ctx context.Context, surveyPeriodID string
 }
 
 func (s *SurveyService) CreateSurvey(req dto.CreateSurveyRequest) error {
+	name := strings.TrimSpace(req.Name)
+	surveyID := strings.TrimSpace(req.SurveyID)
+	surveyPeriodID := strings.TrimSpace(req.SurveyPeriodID)
+	xsrfToken := strings.TrimSpace(req.XSRFToken)
+	cookie := strings.TrimSpace(req.Cookie)
+	regionLevel1 := strings.TrimSpace(req.RegionLevel1)
+	regionLevel2 := strings.TrimSpace(req.RegionLevel2)
+	areaID := strings.TrimSpace(req.AreaID)
+	geoJSONKey := strings.TrimSpace(req.GeoJSONKey)
+
+	if name == "" || surveyID == "" || surveyPeriodID == "" || xsrfToken == "" || cookie == "" || regionLevel1 == "" || regionLevel2 == "" || areaID == "" || geoJSONKey == "" {
+		return apperrors.NewHttpError(http.StatusBadRequest, "name, survey_id, survey_period_id, xsrf_token, cookie, region_level_1, region_level_2, area_id, dan geojson_key wajib diisi")
+	}
+
+	logDateFrom, err := parseSurveyDatePtr(req.LogDateFrom)
+	if err != nil {
+		return apperrors.NewHttpError(http.StatusBadRequest, "log_date_from harus format YYYY-MM-DD")
+	}
+
+	logDateTo, err := parseSurveyDatePtr(req.LogDateTo)
+	if err != nil {
+		return apperrors.NewHttpError(http.StatusBadRequest, "log_date_to harus format YYYY-MM-DD")
+	}
+
+	if logDateFrom != nil && logDateTo != nil && logDateFrom.After(*logDateTo) {
+		return apperrors.NewHttpError(http.StatusBadRequest, "log_date_from tidak boleh lebih besar dari log_date_to")
+	}
+
 	survey := &models.Survey{
-		SurveyID:       req.SurveyID,
-		SurveyPeriodID: req.SurveyPeriodID,
-		XSRFToken:      req.XSRFToken,
-		Cookie:         req.Cookie,
+		Name:            name,
+		SurveyID:        surveyID,
+		SurveyPeriodID:  surveyPeriodID,
+		XSRFToken:       xsrfToken,
+		Cookie:          cookie,
+		RegionLevel1:    regionLevel1,
+		RegionLevel2:    regionLevel2,
+		LogDeltaMaxMins: req.LogDeltaMaxMins,
+		LogDateFrom:     logDateFrom,
+		LogDateTo:       logDateTo,
+		AreaID:          areaID,
+		GeoJSONKey:      geoJSONKey,
 	}
 
 	return s.surveyRepo.Upsert(survey)
 }
 
-func (s *SurveyService) SyncSurveyAssignments(ctx context.Context, req dto.SyncSurveyAssignmentsRequest) (*dto.SyncSurveyAssignmentsResponse, error) {
-	startedAt := time.Now()
-	log.Printf("[sync] start survey sync: surveyPeriodID=%s, pageLength=%d", req.SurveyPeriodID, maxSyncPageLength)
+func (s *SurveyService) UpdateSurvey(surveyPeriodID string, req dto.UpdateSurveyRequest) error {
+	name := strings.TrimSpace(req.Name)
+	regionLevel1 := strings.TrimSpace(req.RegionLevel1)
+	regionLevel2 := strings.TrimSpace(req.RegionLevel2)
+	areaID := strings.TrimSpace(req.AreaID)
+	geoJSONKey := strings.TrimSpace(req.GeoJSONKey)
+	surveyID := strings.TrimSpace(req.SurveyID)
+	xsrfToken := strings.TrimSpace(req.XSRFToken)
+	cookie := strings.TrimSpace(req.Cookie)
 
-	survey, err := s.surveyRepo.FindBySurveyPeriodID(req.SurveyPeriodID)
+	if name == "" || surveyID == "" || xsrfToken == "" || cookie == "" || regionLevel1 == "" || regionLevel2 == "" || areaID == "" || geoJSONKey == "" {
+		return apperrors.NewHttpError(http.StatusBadRequest, "name, survey_id, xsrf_token, cookie, region_level_1, region_level_2, area_id, dan geojson_key wajib diisi")
+	}
+
+	existing, err := s.surveyRepo.FindBySurveyPeriodID(surveyPeriodID)
 	if err != nil {
 		if err == gorm.ErrRecordNotFound {
-			return nil, fmt.Errorf("survey period %s not found", req.SurveyPeriodID)
+			return apperrors.NewHttpError(http.StatusNotFound, "survey tidak ditemukan")
+		}
+		return err
+	}
+
+	if surveyID != existing.SurveyID ||
+		regionLevel1 != existing.RegionLevel1 ||
+		regionLevel2 != existing.RegionLevel2 ||
+		areaID != existing.AreaID ||
+		geoJSONKey != existing.GeoJSONKey {
+		return apperrors.NewHttpError(http.StatusBadRequest, "kode survey, region level 1-2, area, dan geojson key tidak boleh diubah setelah survey dibuat")
+	}
+
+	logDateFrom, err := parseSurveyDatePtr(req.LogDateFrom)
+	if err != nil {
+		return apperrors.NewHttpError(http.StatusBadRequest, "log_date_from harus format YYYY-MM-DD")
+	}
+
+	logDateTo, err := parseSurveyDatePtr(req.LogDateTo)
+	if err != nil {
+		return apperrors.NewHttpError(http.StatusBadRequest, "log_date_to harus format YYYY-MM-DD")
+	}
+
+	if logDateFrom != nil && logDateTo != nil && logDateFrom.After(*logDateTo) {
+		return apperrors.NewHttpError(http.StatusBadRequest, "log_date_from tidak boleh lebih besar dari log_date_to")
+	}
+
+	survey := &models.Survey{
+		Name:            name,
+		SurveyID:        existing.SurveyID,
+		SurveyPeriodID:  surveyPeriodID,
+		XSRFToken:       xsrfToken,
+		Cookie:          cookie,
+		RegionLevel1:    existing.RegionLevel1,
+		RegionLevel2:    existing.RegionLevel2,
+		LogDeltaMaxMins: req.LogDeltaMaxMins,
+		LogDateFrom:     logDateFrom,
+		LogDateTo:       logDateTo,
+		AreaID:          existing.AreaID,
+		GeoJSONKey:      existing.GeoJSONKey,
+	}
+
+	return s.surveyRepo.UpdateBySurveyPeriodID(surveyPeriodID, survey)
+}
+
+func (s *SurveyService) GetAll() ([]models.Survey, error) {
+	return s.surveyRepo.FindAll()
+}
+
+func (s *SurveyService) GetBySurveyPeriodID(surveyPeriodID string) (*models.Survey, error) {
+	return s.surveyRepo.FindBySurveyPeriodID(surveyPeriodID)
+}
+
+func (s *SurveyService) GetAssignmentsBySurveyPeriodID(surveyPeriodID string) ([]models.Assignment, error) {
+	return s.assignmentRepo.FindBySurveyPeriodID(surveyPeriodID)
+}
+
+func (s *SurveyService) GetAssignmentsBySurveyPeriodIDWithRegionFilter(surveyPeriodID string, query dto.AssignmentRegionFilterQuery) ([]models.Assignment, error) {
+	filter := repositories.AssignmentRegionFilter{
+		RegionFullCode: query.RegionFullCode,
+		RegionLevel1:   query.RegionLevel1,
+		RegionLevel2:   query.RegionLevel2,
+		RegionLevel3:   query.RegionLevel3,
+		RegionLevel4:   query.RegionLevel4,
+		RegionLevel5:   query.RegionLevel5,
+		RegionLevel6:   query.RegionLevel6,
+	}
+
+	return s.assignmentRepo.FindBySurveyPeriodIDWithFilter(surveyPeriodID, filter)
+}
+
+func (s *SurveyService) GetLogsBySurveyPeriodIDAndRegionFullCode(
+	surveyPeriodID string,
+	regionFullCode string,
+	actionedAtFrom *time.Time,
+	actionedAtTo *time.Time,
+) ([]models.Log, error) {
+	logs, err := s.logRepo.FindBySurveyPeriodIDRegionFullCodeAndActionedAt(
+		surveyPeriodID,
+		regionFullCode,
+		actionedAtFrom,
+		actionedAtTo,
+	)
+	if err != nil {
+		return nil, err
+	}
+
+	sort.Slice(logs, func(i, j int) bool {
+		return logs[i].ActionedAt.Before(logs[j].ActionedAt)
+	})
+
+	return logs, nil
+}
+
+func (s *SurveyService) GetRegionMetadataBySurveyPeriodID(surveyPeriodID string) (*dto.SurveyRegionMetadataResponse, error) {
+	survey, err := s.surveyRepo.FindBySurveyPeriodID(surveyPeriodID)
+	if err != nil {
+		return nil, err
+	}
+
+	if survey.RegionGroupID == nil {
+		return nil, fmt.Errorf("region metadata has not been synced for survey_period_id %s", surveyPeriodID)
+	}
+
+	creds := dto.FasihCredentials{
+		Cookie:    survey.Cookie,
+		XSRFToken: survey.XSRFToken,
+	}
+
+	metadataResp, err := s.fasihService.GetRegionMetadata(context.Background(), creds, dto.FasihRegionMetadataRequest{GroupID: *survey.RegionGroupID})
+	if err != nil {
+		return nil, err
+	}
+
+	metadataLevels := make([]dto.SurveyRegionMetadataLevelResponse, 0, len(metadataResp.Data.Level))
+	for _, level := range metadataResp.Data.Level {
+		metadataLevels = append(metadataLevels, dto.SurveyRegionMetadataLevelResponse{
+			ID:   level.ID,
+			Name: level.Name,
+		})
+	}
+
+	return &dto.SurveyRegionMetadataResponse{
+		RegionGroupID:       *survey.RegionGroupID,
+		LevelCount:          metadataResp.Data.LevelCount,
+		SmallestRegionLevel: metadataResp.Data.SmallestRegionLevel,
+		GroupName:           metadataResp.Data.GroupName,
+		IsActive:            metadataResp.Data.IsActive,
+		IsPublic:            metadataResp.Data.IsPublic,
+		Level:               metadataLevels,
+	}, nil
+}
+
+func (s *SurveyService) GetRegionsBySurveyPeriodID(surveyPeriodID string, query dto.AssignmentRegionFilterQuery) ([]models.Region, error) {
+	filter := repositories.AssignmentRegionFilter{
+		RegionFullCode: query.RegionFullCode,
+		RegionLevel1:   query.RegionLevel1,
+		RegionLevel2:   query.RegionLevel2,
+		RegionLevel3:   query.RegionLevel3,
+		RegionLevel4:   query.RegionLevel4,
+		RegionLevel5:   query.RegionLevel5,
+		RegionLevel6:   query.RegionLevel6,
+	}
+
+	return s.surveyRepo.FindBySurveyPeriodIDWithFilter(surveyPeriodID, filter)
+}
+
+func (s *SurveyService) SyncSurveyRegions(ctx context.Context, surveyPeriodID string, req dto.SyncSurveyRegionsRequest) (*dto.SyncSurveyRegionsResponse, error) {
+	if !s.fasihService.IsAvailable(ctx) {
+		return nil, apperrors.NewHttpError(http.StatusServiceUnavailable, "Fasih belum dapat diakses saat ini")
+	}
+
+	startedAt := time.Now()
+	log.Printf("[sync-region] start: surveyPeriodID=%s requestedGroupID=%s", surveyPeriodID, strings.TrimSpace(req.RegionGroupID))
+
+	survey, err := s.surveyRepo.FindBySurveyPeriodID(surveyPeriodID)
+	if err != nil {
+		log.Printf("[sync-region] failed load survey: surveyPeriodID=%s err=%v", surveyPeriodID, err)
+		return nil, err
+	}
+
+	groupID := strings.TrimSpace(req.RegionGroupID)
+	creds := dto.FasihCredentials{
+		Cookie:    survey.Cookie,
+		XSRFToken: survey.XSRFToken,
+	}
+
+	if groupID == "" {
+		log.Printf("[sync-region] resolving region_group_id from survey_id=%s", survey.SurveyID)
+		surveyResp, err := s.fasihService.GetSurveyByID(ctx, creds, dto.FasihSurveyByIDRequest{SurveyID: survey.SurveyID})
+		if err != nil {
+			log.Printf("[sync-region] failed resolve region_group_id: surveyID=%s err=%v", survey.SurveyID, err)
+			return nil, err
+		}
+
+		groupID = strings.TrimSpace(surveyResp.Data.RegionGroupID)
+		if groupID == "" {
+			return nil, fmt.Errorf("region_group_id not found for survey_id %s", survey.SurveyID)
+		}
+	}
+
+	metadataResp, err := s.fasihService.GetRegionMetadata(ctx, creds, dto.FasihRegionMetadataRequest{GroupID: groupID})
+	if err != nil {
+		log.Printf("[sync-region] failed fetch metadata: surveyPeriodID=%s groupID=%s err=%v", surveyPeriodID, groupID, err)
+		return nil, err
+	}
+
+	metadata := metadataResp.Data
+	if metadata.LevelCount < 1 {
+		log.Printf("[sync-region] invalid metadata level count: surveyPeriodID=%s groupID=%s levelCount=%d", surveyPeriodID, groupID, metadata.LevelCount)
+		return nil, fmt.Errorf("invalid level count in region metadata")
+	}
+
+	log.Printf("[sync-region] metadata loaded: surveyPeriodID=%s groupID=%s levelCount=%d", surveyPeriodID, groupID, metadata.LevelCount)
+
+	if err := s.surveyRepo.UpdateRegionMetadata(surveyPeriodID, groupID, metadata.LevelCount); err != nil {
+		log.Printf("[sync-region] failed update survey region metadata: surveyPeriodID=%s groupID=%s err=%v", surveyPeriodID, groupID, err)
+		return nil, err
+	}
+
+	regions := make([]models.Region, 0)
+	parents := []regionNode{{fullCode: ""}}
+	startLevel := 1
+	scopeLevel1 := strings.TrimSpace(survey.RegionLevel1)
+	scopeLevel2 := strings.TrimSpace(survey.RegionLevel2)
+
+	if scopeLevel2 != "" && scopeLevel1 == "" {
+		return nil, apperrors.NewHttpError(http.StatusBadRequest, "region_level_1 wajib diisi saat region_level_2 digunakan")
+	}
+
+	if scopeLevel1 != "" {
+		baseLevels := [6]*string{}
+		baseLabels := [6]*string{}
+		level1Copy := scopeLevel1
+		baseLevels[0] = &level1Copy
+
+		listResp, err := s.fasihService.GetRegionsByLevel(ctx, creds, dto.FasihRegionListRequest{
+			GroupID:        groupID,
+			Level:          1,
+			ParentFullCode: "",
+		})
+		if err != nil {
+			log.Printf("[sync-region] failed fetch scope level1 label: surveyPeriodID=%s regionLevel1=%s err=%v", surveyPeriodID, scopeLevel1, err)
+			return nil, err
+		}
+
+		for _, item := range listResp.Data {
+			if shouldSkipRegionItem(item) {
+				continue
+			}
+			if strings.TrimSpace(item.Code) == scopeLevel1 {
+				baseLabels = appendLevelLabel(baseLabels, 1, item.Name)
+				break
+			}
+		}
+
+		parents = []regionNode{{
+			fullCode: scopeLevel1,
+			levels:   baseLevels,
+			labels:   baseLabels,
+		}}
+		startLevel = 2
+		log.Printf("[sync-region] scope enabled: surveyPeriodID=%s regionLevel1=%s regionLevel2=%s", surveyPeriodID, scopeLevel1, scopeLevel2)
+	}
+
+	for level := startLevel; level <= metadata.LevelCount; level++ {
+		levelSavedStart := len(regions)
+		requestCount := 0
+		processedCount := 0
+		nextParents := make([]regionNode, 0)
+		persistLevel := level == metadata.LevelCount
+
+		for _, parent := range parents {
+			requestCount++
+			listResp, err := s.fasihService.GetRegionsByLevel(ctx, creds, dto.FasihRegionListRequest{
+				GroupID:        groupID,
+				Level:          level,
+				ParentFullCode: parent.fullCode,
+			})
+			if err != nil {
+				log.Printf("[sync-region] failed fetch regions by level: surveyPeriodID=%s groupID=%s level=%d parentFullCode=%s err=%v", surveyPeriodID, groupID, level, parent.fullCode, err)
+				return nil, err
+			}
+
+			if level == 2 && scopeLevel2 != "" {
+				var selected *dto.FasihRegionItem
+				for i := range listResp.Data {
+					if shouldSkipRegionItem(listResp.Data[i]) {
+						continue
+					}
+					if strings.TrimSpace(listResp.Data[i].Code) == scopeLevel2 {
+						selected = &listResp.Data[i]
+						break
+					}
+				}
+
+				if selected == nil {
+					log.Printf("[sync-region] level2 scope not found: surveyPeriodID=%s parentFullCode=%s regionLevel2=%s", surveyPeriodID, parent.fullCode, scopeLevel2)
+					continue
+				}
+
+				levelCodes := appendLevelCode(parent.levels, level, selected.Code)
+				levelNames := appendLevelLabel(parent.labels, level, selected.Name)
+				region := models.Region{
+					SurveyID:       survey.SurveyID,
+					SurveyPeriodID: survey.SurveyPeriodID,
+					RegionGroupID:  groupID,
+					Level1:         levelCodes[0],
+					Level1Label:    levelNames[0],
+					Level2:         levelCodes[1],
+					Level2Label:    levelNames[1],
+					Level3:         levelCodes[2],
+					Level3Label:    levelNames[2],
+					Level4:         levelCodes[3],
+					Level4Label:    levelNames[3],
+					Level5:         levelCodes[4],
+					Level5Label:    levelNames[4],
+					Level6:         levelCodes[5],
+					Level6Label:    levelNames[5],
+					FullCode:       selected.FullCode,
+				}
+
+				processedCount++
+				if persistLevel {
+					regions = append(regions, region)
+				}
+				nextParents = append(nextParents, regionNode{
+					fullCode: selected.FullCode,
+					levels:   levelCodes,
+					labels:   levelNames,
+				})
+				continue
+			}
+
+			for _, item := range listResp.Data {
+				if shouldSkipRegionItem(item) {
+					continue
+				}
+
+				levelCodes := appendLevelCode(parent.levels, level, item.Code)
+				levelNames := appendLevelLabel(parent.labels, level, item.Name)
+				region := models.Region{
+					SurveyID:       survey.SurveyID,
+					SurveyPeriodID: survey.SurveyPeriodID,
+					RegionGroupID:  groupID,
+					Level1:         levelCodes[0],
+					Level1Label:    levelNames[0],
+					Level2:         levelCodes[1],
+					Level2Label:    levelNames[1],
+					Level3:         levelCodes[2],
+					Level3Label:    levelNames[2],
+					Level4:         levelCodes[3],
+					Level4Label:    levelNames[3],
+					Level5:         levelCodes[4],
+					Level5Label:    levelNames[4],
+					Level6:         levelCodes[5],
+					Level6Label:    levelNames[5],
+					FullCode:       item.FullCode,
+				}
+
+				processedCount++
+				if persistLevel {
+					regions = append(regions, region)
+				}
+				nextParents = append(nextParents, regionNode{
+					fullCode: item.FullCode,
+					levels:   levelCodes,
+					labels:   levelNames,
+				})
+			}
+		}
+
+		parents = dedupeRegionNodes(nextParents)
+		log.Printf("[sync-region] level=%d completed: requests=%d processed=%d saved=%d nextParents=%d totalSaved=%d", level, requestCount, processedCount, len(regions)-levelSavedStart, len(parents), len(regions))
+	}
+
+	if err := s.surveyRepo.ReplaceSurveyRegions(surveyPeriodID, regions); err != nil {
+		log.Printf("[sync-region] failed replace regions: surveyPeriodID=%s total=%d err=%v", surveyPeriodID, len(regions), err)
+		return nil, err
+	}
+
+	log.Printf("[sync-region] completed in %s: surveyPeriodID=%s groupID=%s levelCount=%d saved=%d", time.Since(startedAt).Round(time.Second), surveyPeriodID, groupID, metadata.LevelCount, len(regions))
+
+	return &dto.SyncSurveyRegionsResponse{
+		RegionGroupID: groupID,
+		LevelCount:    metadata.LevelCount,
+		SavedRegions:  len(regions),
+	}, nil
+}
+
+func (s *SurveyService) SyncSurveyAssignments(ctx context.Context, surveyPeriodID string) (*dto.SyncSurveyAssignmentsResponse, error) {
+	if !s.fasihService.IsAvailable(ctx) {
+		return nil, apperrors.NewHttpError(http.StatusServiceUnavailable, "Fasih belum dapat diakses saat ini")
+	}
+
+	startedAt := time.Now()
+	log.Printf("[sync] start survey sync: surveyPeriodID=%s, pageLength=%d", surveyPeriodID, maxSyncPageLength)
+
+	survey, err := s.surveyRepo.FindBySurveyPeriodID(surveyPeriodID)
+	if err != nil {
+		if err == gorm.ErrRecordNotFound {
+			return nil, fmt.Errorf("survey period %s not found", surveyPeriodID)
 		}
 		return nil, err
 	}
@@ -119,10 +557,7 @@ func (s *SurveyService) SyncSurveyAssignments(ctx context.Context, req dto.SyncS
 			Start:  start,
 			Length: effectiveLength,
 			AssignmentExtraParam: dto.FasihAssignmentExtraParam{
-				SurveyPeriodID:            survey.SurveyPeriodID,
-				AssignmentErrorStatusType: req.AssignmentErrorStatusType,
-				AssignmentStatusAlias:     req.AssignmentStatusAlias,
-				FilterTargetType:          req.FilterTargetType,
+				SurveyPeriodID: survey.SurveyPeriodID,
 			},
 		}
 
@@ -145,6 +580,18 @@ func (s *SurveyService) SyncSurveyAssignments(ctx context.Context, req dto.SyncS
 				return nil, err
 			}
 
+			openedAt := sql.NullTime{}
+			if hasExistingAssignment && existingAssignment.OpenedAt.Valid {
+				openedAt = existingAssignment.OpenedAt
+			}
+
+			startedAt := sql.NullTime{}
+			if hasExistingAssignment && existingAssignment.StartedAt.Valid {
+				startedAt = existingAssignment.StartedAt
+			}
+
+			regionFullCode, regionLevel1, regionLevel2, regionLevel3, regionLevel4, regionLevel5, regionLevel6 := extractRegionLevelCodes(row.Region)
+
 			submittedAt, err := parseFlexibleTime(row.DateCreated)
 			if err != nil {
 				return nil, fmt.Errorf("parse submittedAt for assignment %s: %w", row.ID, err)
@@ -158,9 +605,17 @@ func (s *SurveyService) SyncSurveyAssignments(ctx context.Context, req dto.SyncS
 			assignment := &models.Assignment{
 				SurveyPeriodID: survey.SurveyPeriodID,
 				AssignmentID:   row.ID,
+				RegionFullCode: regionFullCode,
+				RegionLevel1:   regionLevel1,
+				RegionLevel2:   regionLevel2,
+				RegionLevel3:   regionLevel3,
+				RegionLevel4:   regionLevel4,
+				RegionLevel5:   regionLevel5,
+				RegionLevel6:   regionLevel6,
 				Latitude:       row.Latitude,
 				Longitude:      row.Longitude,
-				OpenedAt:       sql.NullTime{},
+				OpenedAt:       openedAt,
+				StartedAt:      startedAt,
 				SubmittedAt:    submittedAt,
 				RevisedAt:      revisedAt,
 			}
@@ -169,7 +624,7 @@ func (s *SurveyService) SyncSurveyAssignments(ctx context.Context, req dto.SyncS
 			}
 			result.SavedAssignments++
 
-			if hasExistingAssignment && existingAssignment.RevisedAt.Equal(revisedAt) {
+			if hasExistingAssignment && existingAssignment.RevisedAt.Equal(revisedAt) && existingAssignment.StartedAt.Valid {
 				skippedUnchanged++
 				continue
 			}
@@ -191,6 +646,31 @@ func (s *SurveyService) SyncSurveyAssignments(ctx context.Context, req dto.SyncS
 			if err != nil {
 				return nil, err
 			}
+
+			openedAtFromDetail, hasOpenedAtFromDetail, err := extractOpenedAtFromDetail(assignmentResp.Data.Data)
+			if err != nil {
+				return nil, err
+			}
+			startedAtFromDetail, hasStartedAtFromDetail, err := extractStartedAtFromDetail(assignmentResp.Data.Data)
+			if err != nil {
+				return nil, err
+			}
+
+			shouldUpsertAssignment := false
+			if hasOpenedAtFromDetail {
+				assignment.OpenedAt = sql.NullTime{Time: openedAtFromDetail, Valid: true}
+				shouldUpsertAssignment = true
+			}
+			if hasStartedAtFromDetail {
+				assignment.StartedAt = sql.NullTime{Time: startedAtFromDetail, Valid: true}
+				shouldUpsertAssignment = true
+			}
+			if shouldUpsertAssignment {
+				if err := s.assignmentRepo.Upsert(assignment); err != nil {
+					return nil, err
+				}
+			}
+
 			answers, err := extractAnswersFromDetail(row.ID, assignmentResp.Data.Data)
 			if err != nil {
 				return nil, err
@@ -212,6 +692,10 @@ func (s *SurveyService) SyncSurveyAssignments(ctx context.Context, req dto.SyncS
 		}
 	}
 
+	if err := s.surveyRepo.UpdateSurveyRegionAssignmentCounts(surveyPeriodID); err != nil {
+		return nil, err
+	}
+
 	log.Printf("[sync] completed in %s: total=%d savedAssignments=%d savedLogs=%d savedAnswers=%d skipped=%d", time.Since(startedAt).Round(time.Second), result.TotalAssignments, result.SavedAssignments, result.SavedLogs, result.SavedAnswers, skippedUnchanged)
 
 	return result, nil
@@ -228,6 +712,146 @@ func parseRevisedAt(raw string, fallback time.Time) (time.Time, error) {
 	}
 
 	return parsed, nil
+}
+
+func extractRegionLevelCodes(region dto.FasihRegion) (*string, *string, *string, *string, *string, *string, *string) {
+	fullCode := regionCodePtr(region.Level1.FullCode)
+	level1 := regionCodePtr(region.Level1.Code)
+
+	if region.Level1.Level2 == nil {
+		return fullCode, level1, nil, nil, nil, nil, nil
+	}
+
+	fullCode = regionCodePtr(region.Level1.Level2.FullCode)
+	level2 := regionCodePtr(region.Level1.Level2.Code)
+	if region.Level1.Level2.Level3 == nil {
+		return fullCode, level1, level2, nil, nil, nil, nil
+	}
+
+	fullCode = regionCodePtr(region.Level1.Level2.Level3.FullCode)
+	level3 := regionCodePtr(region.Level1.Level2.Level3.Code)
+	if region.Level1.Level2.Level3.Level4 == nil {
+		return fullCode, level1, level2, level3, nil, nil, nil
+	}
+
+	fullCode = regionCodePtr(region.Level1.Level2.Level3.Level4.FullCode)
+	level4 := regionCodePtr(region.Level1.Level2.Level3.Level4.Code)
+	if region.Level1.Level2.Level3.Level4.Level5 == nil {
+		return fullCode, level1, level2, level3, level4, nil, nil
+	}
+
+	fullCode = regionCodePtr(region.Level1.Level2.Level3.Level4.Level5.FullCode)
+	level5 := regionCodePtr(region.Level1.Level2.Level3.Level4.Level5.Code)
+	if region.Level1.Level2.Level3.Level4.Level5.Level6 == nil {
+		return fullCode, level1, level2, level3, level4, level5, nil
+	}
+
+	fullCode = regionCodePtr(region.Level1.Level2.Level3.Level4.Level5.Level6.FullCode)
+	level6 := regionCodePtr(region.Level1.Level2.Level3.Level4.Level5.Level6.Code)
+	return fullCode, level1, level2, level3, level4, level5, level6
+}
+
+func regionCodePtr(code string) *string {
+	trimmed := strings.TrimSpace(code)
+	if trimmed == "" {
+		return nil
+	}
+
+	return &trimmed
+}
+
+func parseSurveyDatePtr(value *string) (*time.Time, error) {
+	if value == nil {
+		return nil, nil
+	}
+
+	trimmed := strings.TrimSpace(*value)
+	if trimmed == "" {
+		return nil, nil
+	}
+
+	parsed, err := time.Parse("2006-01-02", trimmed)
+	if err != nil {
+		return nil, err
+	}
+
+	return &parsed, nil
+}
+
+func appendLevelCode(levels [6]*string, level int, code string) [6]*string {
+	updated := levels
+	if level < 1 || level > len(updated) {
+		return updated
+	}
+
+	trimmed := strings.TrimSpace(code)
+	if trimmed == "" {
+		return updated
+	}
+
+	value := trimmed
+	updated[level-1] = &value
+	return updated
+}
+
+func appendLevelLabel(labels [6]*string, level int, name string) [6]*string {
+	updated := labels
+	if level < 1 || level > len(updated) {
+		return updated
+	}
+
+	trimmed := strings.TrimSpace(name)
+	if trimmed == "" || trimmed == "-" {
+		return updated
+	}
+
+	value := trimmed
+	updated[level-1] = &value
+	return updated
+}
+
+func extractLevelLabels(levels []dto.FasihRegionMetadataLevel) [6]*string {
+	var labels [6]*string
+
+	for _, level := range levels {
+		if level.ID < 1 || level.ID > len(labels) {
+			continue
+		}
+
+		name := strings.TrimSpace(level.Name)
+		if name == "" || name == "-" {
+			continue
+		}
+
+		value := name
+		labels[level.ID-1] = &value
+	}
+
+	return labels
+}
+
+func dedupeRegionNodes(nodes []regionNode) []regionNode {
+	if len(nodes) == 0 {
+		return nil
+	}
+
+	seen := make(map[string]struct{}, len(nodes))
+	result := make([]regionNode, 0, len(nodes))
+
+	for _, node := range nodes {
+		if _, ok := seen[node.fullCode]; ok {
+			continue
+		}
+		seen[node.fullCode] = struct{}{}
+		result = append(result, node)
+	}
+
+	return result
+}
+
+func shouldSkipRegionItem(item dto.FasihRegionItem) bool {
+	name := strings.TrimSpace(item.Name)
+	return name == "-"
 }
 
 func extractLogsFromHistory(assignmentID string, items []dto.FasihAssignmentHistory) ([]models.Log, error) {
@@ -300,6 +924,56 @@ func extractAnswersFromDetail(assignmentID string, raw dto.FasihJSON) ([]models.
 	return answers, nil
 }
 
+func extractOpenedAtFromDetail(raw dto.FasihJSON) (time.Time, bool, error) {
+	if len(raw) == 0 {
+		return time.Time{}, false, nil
+	}
+
+	var payload dto.FasihAnswerPayload
+	if err := json.Unmarshal(raw, &payload); err != nil {
+		return time.Time{}, false, err
+	}
+
+	openedAt, hasOpenedAt := parseDynamicTime(payload.CreatedAt)
+	return openedAt, hasOpenedAt, nil
+}
+
+func extractStartedAtFromDetail(raw dto.FasihJSON) (time.Time, bool, error) {
+	if len(raw) == 0 {
+		return time.Time{}, false, nil
+	}
+
+	var payload dto.FasihAnswerPayload
+	if err := json.Unmarshal(raw, &payload); err != nil {
+		return time.Time{}, false, err
+	}
+
+	var earliestStartAt time.Time
+	hasStartAt := false
+	for _, item := range payload.Answers {
+		key := strings.ToLower(strings.TrimSpace(item.DataKey))
+		if key == "" || !strings.Contains(key, "mulai") {
+			continue
+		}
+
+		startAt, ok := parseDynamicTime(item.Answer)
+		if !ok {
+			continue
+		}
+
+		if !hasStartAt || startAt.Before(earliestStartAt) {
+			earliestStartAt = startAt
+			hasStartAt = true
+		}
+	}
+
+	if hasStartAt {
+		return earliestStartAt, true, nil
+	}
+
+	return time.Time{}, false, nil
+}
+
 func parseDynamicTime(v interface{}) (time.Time, bool) {
 	switch t := v.(type) {
 	case nil:
@@ -344,6 +1018,18 @@ func parseFlexibleTime(raw string) (time.Time, error) {
 	}
 	for _, layout := range layouts {
 		if parsed, err := time.Parse(layout, trimmed); err == nil {
+			return parsed, nil
+		}
+	}
+
+	layoutsWithoutTimezone := []string{
+		"2006-01-02T15:04:05",
+		"2006-01-02T15:04:05.999999999",
+		"2006-01-02 15:04:05",
+		"2006-01-02 15:04:05.999999999",
+	}
+	for _, layout := range layoutsWithoutTimezone {
+		if parsed, err := time.ParseInLocation(layout, trimmed, defaultGMTPlus8); err == nil {
 			return parsed, nil
 		}
 	}

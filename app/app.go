@@ -9,6 +9,7 @@ import (
 
 	"github.com/gofiber/fiber/v3"
 	"github.com/gofiber/fiber/v3/middleware/cors"
+	"github.com/gofiber/fiber/v3/middleware/static"
 )
 
 func NewFiberApp(
@@ -16,6 +17,10 @@ func NewFiberApp(
 	JWTMiddleware *middlewares.JWTMiddleware,
 	AuthHandler *handlers.AuthHandler,
 	UserHandler *handlers.UserHandler,
+	SurveyHandler *handlers.SurveyHandler,
+	AssignmentHandler *handlers.AssignmentHandler,
+	SystemHandler *handlers.SystemHandler,
+	AreaHandler *handlers.AreaHandler,
 ) (*container.AppContainer, error) {
 	App := fiber.New(
 		fiber.Config{AppName: AppConfig.Name},
@@ -44,15 +49,22 @@ func NewFiberApp(
 		return c.SendString("OK")
 	})
 
+	// Serve static assets such as GeoJSON boundary files with access-token protection.
+	App.Use("/static", JWTMiddleware.Protected(), static.New("./public"))
+
 	api := App.Group("/api")
 	apiV1 := api.Group("/v1")
 
 	// Public
 	routes.RegisterAuthRoutes(apiV1, AuthHandler, JWTMiddleware)
+	routes.RegisterSystemRoutes(apiV1, SystemHandler)
 
 	// Protected
 	protected := apiV1.Group("/", JWTMiddleware.Protected())
 	routes.RegisterUserRoutes(protected, UserHandler)
+	routes.RegisterSurveyRoutes(protected, SurveyHandler)
+	routes.RegisterAssignmentRoutes(protected, AssignmentHandler)
+	routes.RegisterAreaRoutes(protected, AreaHandler)
 
 	return &container.AppContainer{
 		App:    App,

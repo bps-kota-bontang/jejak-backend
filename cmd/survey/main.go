@@ -13,12 +13,13 @@ import (
 )
 
 const (
-	modeCreate  = "create"
-	modeSync    = "sync"
-	modeAnalyze = "analyze"
+	modeCreate     = "create"
+	modeSync       = "sync"
+	modeSyncRegion = "sync-region"
+	modeAnalyze    = "analyze"
 
 	// Set mode di sini: modeCreate atau modeSync.
-	runMode = modeAnalyze
+	runMode = modeSync
 
 	// Set credential/payload di sini agar tidak perlu lewat arg command.
 	fasihSurveyID       = "2561fe7e-c7b6-4e4a-b2d9-c8d254cba2bd"
@@ -29,6 +30,9 @@ const (
 	syncAssignmentErrorStatus = -1
 	syncAssignmentStatusAlias = "SUBMITTED BY Pencacah"
 	syncFilterTargetType      = "TARGET_ONLY"
+
+	// Optional: kosongkan agar otomatis ambil dari survey by id.
+	syncRegionGroupID = ""
 )
 
 func main() {
@@ -39,16 +43,28 @@ func main() {
 		log.Fatalf("failed to initialize survey command: %v", err)
 	}
 
-	switch runMode {
+	mode := resolveRunMode()
+
+	switch mode {
 	case modeCreate:
 		runCreate(surveyContainer)
 	case modeSync:
 		runSync(surveyContainer)
+	case modeSyncRegion:
+		runSyncRegion(surveyContainer)
 	case modeAnalyze:
 		runAnalyze(surveyContainer)
 	default:
-		log.Fatalf("invalid runMode: %s", runMode)
+		log.Fatalf("invalid mode: %s (allowed: %s, %s, %s, %s)", mode, modeCreate, modeSync, modeSyncRegion, modeAnalyze)
 	}
+}
+
+func resolveRunMode() string {
+	if len(os.Args) > 1 {
+		return os.Args[1]
+	}
+
+	return runMode
 }
 
 func loadDotEnvIfPresent() {
@@ -85,13 +101,7 @@ func runSync(surveyContainer *container.SurveyContainer) {
 		log.Fatal("set fasihSurveyPeriodID in code")
 	}
 
-	syncReq := dto.SyncSurveyAssignmentsRequest{
-		SurveyPeriodID:            fasihSurveyPeriodID,
-		AssignmentErrorStatusType: syncAssignmentErrorStatus,
-		AssignmentStatusAlias:     syncAssignmentStatusAlias,
-		FilterTargetType:          syncFilterTargetType,
-	}
-	result, err := surveyContainer.SurveyService.SyncSurveyAssignments(context.Background(), syncReq)
+	result, err := surveyContainer.SurveyService.SyncSurveyAssignments(context.Background(), fasihSurveyPeriodID)
 	if err != nil {
 		log.Fatalf("failed to sync survey: %v", err)
 	}
@@ -113,4 +123,19 @@ func runAnalyze(surveyContainer *container.SurveyContainer) {
 	for _, assignment := range result.Assignments {
 		fmt.Printf("- assignment=%s totalAnswers=%d locations=%d\n", assignment.AssignmentID, assignment.TotalAnswers, len(assignment.Locations))
 	}
+}
+
+func runSyncRegion(surveyContainer *container.SurveyContainer) {
+	if fasihSurveyPeriodID == "" {
+		log.Fatal("set fasihSurveyPeriodID in code")
+	}
+
+	result, err := surveyContainer.SurveyService.SyncSurveyRegions(context.Background(), fasihSurveyPeriodID, dto.SyncSurveyRegionsRequest{
+		RegionGroupID: syncRegionGroupID,
+	})
+	if err != nil {
+		log.Fatalf("failed to sync survey regions: %v", err)
+	}
+
+	fmt.Printf("sync region done: regionGroupID=%s levelCount=%d saved=%d\n", result.RegionGroupID, result.LevelCount, result.SavedRegions)
 }

@@ -19,11 +19,12 @@ func shortenBuildHash(build string) string {
 }
 
 type AppConfig struct {
-	Name  string
-	Env   string
-	Port  string
-	URL   string
-	Build string
+	Name             string
+	Env              string
+	Port             string
+	URL              string
+	Build            string
+	PublicDir        string
 }
 
 func LoadAppConfig() (*AppConfig, error) {
@@ -43,11 +44,12 @@ func LoadAppConfig() (*AppConfig, error) {
 	}
 
 	return &AppConfig{
-		Name:  getEnv("APP_NAME", "jejak"),
-		Env:   getEnv("APP_ENV", env),
-		Port:  getEnv("APP_PORT", "3000"),
-		URL:   getEnv("APP_URL", "http://localhost:3000"),
-		Build: shortenBuildHash(getEnv("APP_BUILD", "development")),
+		Name:            getEnv("APP_NAME", "jejak"),
+		Env:             getEnv("APP_ENV", env),
+		Port:            getEnv("APP_PORT", "3000"),
+		URL:             getEnv("APP_URL", "http://localhost:3000"),
+		Build:           shortenBuildHash(getEnv("APP_BUILD", "development")),
+		PublicDir:       getEnv("PUBLIC_DIR", "./public"),
 	}, nil
 }
 

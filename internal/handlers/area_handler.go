@@ -3,6 +3,7 @@ package handlers
 import (
 	"fmt"
 	"io"
+	"jejak/config"
 	"jejak/internal/dto"
 	apperrors "jejak/internal/errors"
 	"jejak/internal/services"
@@ -18,15 +19,29 @@ import (
 
 var invalidFileNameChars = regexp.MustCompile(`[^a-zA-Z0-9_-]`)
 
+const geoJSONUploadSubDir = "geojson"
+const geoJSONUploadURLPrefix = "/geojson"
+
 type AreaHandler struct {
-	service  *services.AreaService
-	validate *validator.Validate
+	service         *services.AreaService
+	validate        *validator.Validate
+	uploadDir       string
+	uploadURLPrefix string
 }
 
-func NewAreaHandler(service *services.AreaService, validate *validator.Validate) *AreaHandler {
+func NewAreaHandler(service *services.AreaService, validate *validator.Validate, appConfig *config.AppConfig) *AreaHandler {
+	publicDir := strings.TrimSpace(appConfig.PublicDir)
+	if publicDir == "" {
+		publicDir = "./public"
+	}
+
+	uploadDir := filepath.Join(publicDir, geoJSONUploadSubDir)
+
 	return &AreaHandler{
-		service:  service,
-		validate: validate,
+		service:         service,
+		validate:        validate,
+		uploadDir:       uploadDir,
+		uploadURLPrefix: geoJSONUploadURLPrefix,
 	}
 }
 
@@ -109,7 +124,7 @@ func (h *AreaHandler) UploadGeoJSON(c fiber.Ctx) error {
 		return respondError(c, apperrors.NewHttpError(fiber.StatusBadRequest, "only .geojson or .json files are allowed"))
 	}
 
-	dirPath := "./public/geojson"
+	dirPath := h.uploadDir
 	if err := os.MkdirAll(dirPath, 0o755); err != nil {
 		return respondError(c, err)
 	}
@@ -140,7 +155,7 @@ func (h *AreaHandler) UploadGeoJSON(c fiber.Ctx) error {
 		return respondError(c, err)
 	}
 
-	return respondOK(c, fiber.Map{"geojson_file_path": "/geojson/" + storedName}, "GeoJSON uploaded successfully")
+	return respondOK(c, fiber.Map{"geojson_file_path": h.uploadURLPrefix + "/" + storedName}, "GeoJSON uploaded successfully")
 }
 
 func (h *AreaHandler) Update(c fiber.Ctx) error {

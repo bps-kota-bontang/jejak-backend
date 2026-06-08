@@ -15,7 +15,9 @@ ARG BUILD_HASH
 ENV APP_BUILD=${BUILD_HASH}
 
 RUN apk add --no-cache ca-certificates && \
-    adduser -D -g '' jejak
+    adduser -D -g '' jejak && \
+    mkdir -p /app/public/geojson && \
+    chown -R jejak:jejak /app/public
 
 WORKDIR /app
 

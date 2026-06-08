@@ -49,8 +49,8 @@ func NewFiberApp(
 		return c.SendString("OK")
 	})
 
-	// Serve static assets such as GeoJSON boundary files with access-token protection.
-	App.Use("/static", JWTMiddleware.Protected(), static.New("./public"))
+	// Serve static assets from public directory with access-token protection.
+	App.Use("/static", JWTMiddleware.Protected(), static.New(AppConfig.PublicDir))
 
 	api := App.Group("/api")
 	apiV1 := api.Group("/v1")

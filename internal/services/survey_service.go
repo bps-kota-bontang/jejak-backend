@@ -898,8 +898,11 @@ func (s *SurveyService) SyncSurveyAssignments(ctx context.Context, surveyPeriodI
 		strings.ToUpper("DRAFT"):                 {},
 		strings.ToUpper("SUBMITTED BY Pencacah"): {},
 		strings.ToUpper("COMPLETED BY Pengawas"): {},
+		strings.ToUpper("APPROVED BY Pengawas"):  {},
+		strings.ToUpper("REJECTED BY Pengawas"):  {},
+		strings.ToUpper("REVOKED BY Pengawas"):   {},
 	}
-	syncStatuses := []string{"DRAFT", "SUBMITTED BY Pencacah", "COMPLETED BY Pengawas"}
+	syncStatuses := []string{"DRAFT", "SUBMITTED BY Pencacah", "COMPLETED BY Pengawas", "APPROVED BY Pengawas", "REJECTED BY Pengawas", "REVOKED BY Pengawas"}
 
 	for _, syncStatus := range syncStatuses {
 		start := 0

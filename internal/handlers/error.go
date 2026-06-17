@@ -19,6 +19,14 @@ func respondOK(c fiber.Ctx, data any, message string) error {
 	})
 }
 
+// respondAccepted sends a 202 response with the standard envelope.
+func respondAccepted(c fiber.Ctx, data any, message string) error {
+	return c.Status(fiber.StatusAccepted).JSON(helpers.Response{
+		Data:    data,
+		Message: message,
+	})
+}
+
 // respondCreated sends a 201 response with the standard envelope.
 func respondCreated(c fiber.Ctx, data any, message string) error {
 	return c.Status(fiber.StatusCreated).JSON(helpers.Response{

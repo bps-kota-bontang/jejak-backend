@@ -59,7 +59,15 @@ func InitializeApp() (*container.AppContainer, error) {
 	areaRepository := repositories.NewAreaRepository(db)
 	assignmentService := services.NewAssignmentService(assignmentRepository, logRepository, answerRepository, locationRepository, surveyRepository, areaRepository)
 	surveyService := services.NewSurveyService(surveyRepository, assignmentRepository, logRepository, answerRepository, fasihService, assignmentService)
-	surveyHandler := handlers.NewSurveyHandler(surveyService, validate)
+	redisConfig, err := config.LoadRedisConfig()
+	if err != nil {
+		return nil, err
+	}
+	client, err := providers.NewAsyncClient(redisConfig)
+	if err != nil {
+		return nil, err
+	}
+	surveyHandler := handlers.NewSurveyHandler(surveyService, validate, client)
 	assignmentHandler := handlers.NewAssignmentHandler(assignmentService, validate)
 	systemHandler := handlers.NewSystemHandler(fasihService)
 	areaService := services.NewAreaService(areaRepository)

@@ -3,6 +3,8 @@ package app
 import (
 	"jejak/config"
 	"jejak/container"
+	"jejak/internal/services"
+	"jejak/internal/tasks"
 
 	"github.com/hibiken/asynq"
 )
@@ -11,6 +13,7 @@ import (
 func NewAsynqWorker(
 	appConfig *config.AppConfig,
 	redisConfig *config.RedisConfig,
+	surveyService *services.SurveyService,
 ) (*container.WorkerContainer, error) {
 	redisClientOpt := asynq.RedisClientOpt{
 		Addr: redisConfig.Host + ":" + redisConfig.Port,
@@ -26,6 +29,7 @@ func NewAsynqWorker(
 	})
 
 	mux := asynq.NewServeMux()
+	tasks.RegisterSurveyTaskHandlers(mux, surveyService)
 
 	return &container.WorkerContainer{
 		Server: srv,

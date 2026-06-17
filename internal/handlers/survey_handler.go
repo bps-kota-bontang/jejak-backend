@@ -3,27 +3,32 @@ package handlers
 import (
 	"fmt"
 	"io"
+	"strings"
+	"time"
+
 	"jejak/internal/dto"
 	apperrors "jejak/internal/errors"
 	"jejak/internal/mappers"
 	"jejak/internal/services"
+	"jejak/internal/tasks"
 	"jejak/utils"
-	"strings"
-	"time"
 
 	"github.com/go-playground/validator/v10"
 	"github.com/gofiber/fiber/v3"
+	"github.com/hibiken/asynq"
 )
 
 type SurveyHandler struct {
 	service  *services.SurveyService
 	validate *validator.Validate
+	queue    *asynq.Client
 }
 
-func NewSurveyHandler(service *services.SurveyService, validate *validator.Validate) *SurveyHandler {
+func NewSurveyHandler(service *services.SurveyService, validate *validator.Validate, queue *asynq.Client) *SurveyHandler {
 	return &SurveyHandler{
 		service:  service,
 		validate: validate,
+		queue:    queue,
 	}
 }
 
@@ -84,12 +89,17 @@ func (h *SurveyHandler) SyncSurveyAssignments(c fiber.Ctx) error {
 		return respondError(c, apperrors.NewHttpError(fiber.StatusForbidden, "You are not authorized to sync all assignments"))
 	}
 
-	result, err := h.service.SyncSurveyAssignments(c.Context(), surveyPeriodID, dto.SyncSurveyAssignmentsRequest{})
+	info, err := tasks.EnqueueSurveySync(c.Context(), h.queue, surveyPeriodID, "")
 	if err != nil {
 		return respondError(c, err)
 	}
 
-	return respondOK(c, result, "Survey assignments synced successfully")
+	return respondAccepted(c, dto.QueuedSurveyTaskResponse{
+		TaskID:         info.ID,
+		Queue:          info.Queue,
+		Type:           info.Type,
+		SurveyPeriodID: surveyPeriodID,
+	}, "Survey sync queued successfully")
 }
 
 func (h *SurveyHandler) SyncSurveyAssignmentsByRegion(c fiber.Ctx) error {
@@ -103,14 +113,18 @@ func (h *SurveyHandler) SyncSurveyAssignmentsByRegion(c fiber.Ctx) error {
 		return respondError(c, apperrors.NewHttpError(fiber.StatusBadRequest, "regionFullCode is required"))
 	}
 
-	result, err := h.service.SyncSurveyAssignments(c.Context(), surveyPeriodID, dto.SyncSurveyAssignmentsRequest{
-		RegionFullCode: regionFullCode,
-	})
+	info, err := tasks.EnqueueSurveySyncRegion(c.Context(), h.queue, surveyPeriodID, regionFullCode)
 	if err != nil {
 		return respondError(c, err)
 	}
 
-	return respondOK(c, result, "Survey region assignments synced successfully")
+	return respondAccepted(c, dto.QueuedSurveyTaskResponse{
+		TaskID:         info.ID,
+		Queue:          info.Queue,
+		Type:           info.Type,
+		SurveyPeriodID: surveyPeriodID,
+		RegionFullCode: regionFullCode,
+	}, "Survey region sync queued successfully")
 }
 
 func (h *SurveyHandler) ImportSurveyRegions(c fiber.Ctx) error {
@@ -295,12 +309,17 @@ func (h *SurveyHandler) AnalyzeSurvey(c fiber.Ctx) error {
 		return respondError(c, apperrors.NewHttpError(fiber.StatusForbidden, "You are not authorized to analyze all assignments"))
 	}
 
-	result, err := h.service.AnalyzeSurvey(c.Context(), surveyPeriodID)
+	info, err := tasks.EnqueueSurveyAnalyze(c.Context(), h.queue, surveyPeriodID)
 	if err != nil {
 		return respondError(c, err)
 	}
 
-	return respondOK(c, result, "Survey analyzed successfully")
+	return respondAccepted(c, dto.QueuedSurveyTaskResponse{
+		TaskID:         info.ID,
+		Queue:          info.Queue,
+		Type:           info.Type,
+		SurveyPeriodID: surveyPeriodID,
+	}, "Survey analysis queued successfully")
 }
 
 func (h *SurveyHandler) AnalyzeSurveyByRegion(c fiber.Ctx) error {
@@ -314,12 +333,18 @@ func (h *SurveyHandler) AnalyzeSurveyByRegion(c fiber.Ctx) error {
 		return respondError(c, apperrors.NewHttpError(fiber.StatusBadRequest, "regionFullCode is required"))
 	}
 
-	result, err := h.service.AnalyzeSurveyByRegion(c.Context(), surveyPeriodID, regionFullCode)
+	info, err := tasks.EnqueueSurveyAnalyzeRegion(c.Context(), h.queue, surveyPeriodID, regionFullCode)
 	if err != nil {
 		return respondError(c, err)
 	}
 
-	return respondOK(c, result, "Survey region analyzed successfully")
+	return respondAccepted(c, dto.QueuedSurveyTaskResponse{
+		TaskID:         info.ID,
+		Queue:          info.Queue,
+		Type:           info.Type,
+		SurveyPeriodID: surveyPeriodID,
+		RegionFullCode: regionFullCode,
+	}, "Survey region analysis queued successfully")
 }
 
 func (h *SurveyHandler) SyncSurveyRegions(c fiber.Ctx) error {
@@ -336,12 +361,18 @@ func (h *SurveyHandler) SyncSurveyRegions(c fiber.Ctx) error {
 		return respondValidation(c, err)
 	}
 
-	result, err := h.service.SyncSurveyRegions(c.Context(), surveyPeriodID, req)
+	info, err := tasks.EnqueueSurveySyncRegion(c.Context(), h.queue, surveyPeriodID, req.RegionGroupID)
 	if err != nil {
 		return respondError(c, err)
 	}
 
-	return respondOK(c, result, "Survey regions synced successfully")
+	return respondAccepted(c, dto.QueuedSurveyTaskResponse{
+		TaskID:         info.ID,
+		Queue:          info.Queue,
+		Type:           info.Type,
+		SurveyPeriodID: surveyPeriodID,
+		RegionFullCode: req.RegionGroupID,
+	}, "Survey region sync queued successfully")
 }
 
 func (h *SurveyHandler) GetRegionMetadata(c fiber.Ctx) error {

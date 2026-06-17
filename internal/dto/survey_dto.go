@@ -107,6 +107,14 @@ type SyncSurveyAssignmentsRequest struct {
 	RegionFullCode string `json:"region_full_code,omitempty"`
 }
 
+type QueuedSurveyTaskResponse struct {
+	TaskID         string `json:"task_id"`
+	Queue          string `json:"queue"`
+	Type           string `json:"type"`
+	SurveyPeriodID string `json:"survey_period_id"`
+	RegionFullCode string `json:"region_full_code,omitempty"`
+}
+
 type SyncSurveyRegionsRequest struct {
 	RegionGroupID string `json:"region_group_id,omitempty"`
 }

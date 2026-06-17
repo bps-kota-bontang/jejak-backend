@@ -10,6 +10,9 @@ import (
 	"jejak/app"
 	"jejak/config"
 	"jejak/container"
+	"jejak/internal/providers"
+	"jejak/internal/repositories"
+	"jejak/internal/services"
 )
 
 // Injectors from wire.go:
@@ -24,7 +27,28 @@ func InitializeWorker() (*container.WorkerContainer, error) {
 	if err != nil {
 		return nil, err
 	}
-	workerContainer, err := app.NewAsynqWorker(appConfig, redisConfig)
+	databaseConfig, err := config.LoadDatabaseConfig()
+	if err != nil {
+		return nil, err
+	}
+	db, err := providers.NewDBConnection(databaseConfig)
+	if err != nil {
+		return nil, err
+	}
+	surveyRepository := repositories.NewSurveyRepository(db)
+	assignmentRepository := repositories.NewAssignmentRepository(db)
+	logRepository := repositories.NewLogRepository(db)
+	answerRepository := repositories.NewAnswerRepository(db)
+	fasihConfig, err := config.LoadFasihConfig()
+	if err != nil {
+		return nil, err
+	}
+	fasihService := services.NewFasihService(fasihConfig)
+	locationRepository := repositories.NewLocationRepository(db)
+	areaRepository := repositories.NewAreaRepository(db)
+	assignmentService := services.NewAssignmentService(assignmentRepository, logRepository, answerRepository, locationRepository, surveyRepository, areaRepository)
+	surveyService := services.NewSurveyService(surveyRepository, assignmentRepository, logRepository, answerRepository, fasihService, assignmentService)
+	workerContainer, err := app.NewAsynqWorker(appConfig, redisConfig, surveyService)
 	if err != nil {
 		return nil, err
 	}

@@ -21,6 +21,7 @@ const fasihAssignmentByIDPath = "/app/api/assignment-general/api/assignment/get-
 const fasihAssignmentHistoryByIDPath = "/app/api/assignment-general/api/assignment-history/get-by-assignment-id"
 const fasihRegionMetadataPath = "/app/api/region/api/v1/region-metadata"
 const fasihSurveyByIDPath = "/app/api/survey/api/v1/surveys"
+const fasihSurveyPeriodByIDPath = "/app/api/survey/api/v1/survey-periods"
 
 var fasihColumns = []map[string]interface{}{
 	{"data": "id", "orderable": true},
@@ -66,6 +67,47 @@ func (s *FasihService) IsAvailable(ctx context.Context) bool {
 	}
 	defer response.Body.Close()
 	_, _ = io.Copy(io.Discard, response.Body)
+
+	return true
+}
+
+func (s *FasihService) IsAuthorizedForSurveyPeriod(ctx context.Context, creds dto.FasihCredentials, surveyPeriodID string) bool {
+	surveyPeriodID = strings.TrimSpace(surveyPeriodID)
+	if surveyPeriodID == "" {
+		return false
+	}
+
+	if strings.TrimSpace(creds.XSRFToken) == "" || strings.TrimSpace(creds.Cookie) == "" {
+		return false
+	}
+
+	checkCtx, cancel := context.WithTimeout(ctx, 10*time.Second)
+	defer cancel()
+
+	endpoint := fmt.Sprintf("%s%s/%s", s.cfg.BaseURL, fasihSurveyPeriodByIDPath, url.PathEscape(surveyPeriodID))
+	httpReq, err := http.NewRequestWithContext(checkCtx, http.MethodGet, endpoint, nil)
+	if err != nil {
+		return false
+	}
+
+	setFasihHeaders(httpReq, creds)
+
+	client := &http.Client{Timeout: 10 * time.Second}
+	resp, err := client.Do(httpReq)
+	if err != nil {
+		return false
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode == http.StatusUnauthorized || resp.StatusCode == http.StatusForbidden {
+		_, _ = io.Copy(io.Discard, resp.Body)
+		return false
+	}
+
+	var payload map[string]interface{}
+	if err := decodeFasihJSONResponse(resp, &payload, fasihSurveyPeriodByIDPath+"/{surveyPeriodId}"); err != nil {
+		return false
+	}
 
 	return true
 }

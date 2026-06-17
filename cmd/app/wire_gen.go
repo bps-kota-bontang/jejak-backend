@@ -69,7 +69,7 @@ func InitializeApp() (*container.AppContainer, error) {
 	}
 	surveyHandler := handlers.NewSurveyHandler(surveyService, validate, client)
 	assignmentHandler := handlers.NewAssignmentHandler(assignmentService, validate)
-	systemHandler := handlers.NewSystemHandler(fasihService)
+	systemHandler := handlers.NewSystemHandler(fasihService, surveyRepository)
 	areaService := services.NewAreaService(areaRepository)
 	areaHandler := handlers.NewAreaHandler(areaService, validate, appConfig)
 	appContainer, err := app.NewFiberApp(appConfig, jwtMiddleware, authHandler, userHandler, surveyHandler, assignmentHandler, systemHandler, areaHandler)

@@ -3,14 +3,21 @@ package tasks
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log"
+	"strings"
+	"time"
 
 	"jejak/internal/dto"
 	"jejak/internal/services"
 
 	"github.com/hibiken/asynq"
 )
+
+// syncTaskTimeout is the maximum duration a sync task is allowed to run.
+// Asynq will consider the task timed out and retry if it exceeds this limit.
+const syncTaskTimeout = 60 * time.Minute
 
 const (
 	TypeSurveySync          = "survey:sync"
@@ -66,12 +73,29 @@ func enqueueSurveyTask(ctx context.Context, client *asynq.Client, taskType strin
 		return nil, fmt.Errorf("marshal survey task payload: %w", err)
 	}
 
-	task := asynq.NewTask(taskType, data)
+	// Build a deterministic task ID to prevent duplicate tasks for the same
+	// survey+region combination from being queued simultaneously.
+	taskID := taskType + ":" + payload.SurveyPeriodID
+	if strings.TrimSpace(payload.RegionFullCode) != "" {
+		taskID += ":" + strings.TrimSpace(payload.RegionFullCode)
+	}
+
+	task := asynq.NewTask(taskType, data,
+		asynq.TaskID(taskID),
+		asynq.Timeout(syncTaskTimeout),
+	)
 	info, err := client.EnqueueContext(ctx, task)
 	if err != nil {
+		// If a task with the same ID is already pending or active, treat it as
+		// a no-op rather than returning an error to the caller.
+		if errors.Is(err, asynq.ErrTaskIDConflict) {
+			log.Printf("[task] skipped duplicate enqueue for taskID=%s", taskID)
+			return nil, nil
+		}
 		return nil, fmt.Errorf("enqueue %s task: %w", taskType, err)
 	}
 
+	log.Printf("[task] enqueued taskID=%s queue=%s", taskID, info.Queue)
 	return info, nil
 }
 

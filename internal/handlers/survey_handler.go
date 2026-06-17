@@ -95,6 +95,12 @@ func (h *SurveyHandler) SyncSurveyAssignments(c fiber.Ctx) error {
 		return respondError(c, err)
 	}
 
+	if info == nil {
+		return respondAccepted(c, dto.QueuedSurveyTaskResponse{
+			SurveyPeriodID: surveyPeriodID,
+		}, "Survey sync already queued or running")
+	}
+
 	return respondAccepted(c, dto.QueuedSurveyTaskResponse{
 		TaskID:         info.ID,
 		Queue:          info.Queue,
@@ -117,6 +123,13 @@ func (h *SurveyHandler) SyncSurveyAssignmentsByRegion(c fiber.Ctx) error {
 	info, err := tasks.EnqueueSurveySyncRegion(c.Context(), h.queue, surveyPeriodID, regionFullCode)
 	if err != nil {
 		return respondError(c, err)
+	}
+
+	if info == nil {
+		return respondAccepted(c, dto.QueuedSurveyTaskResponse{
+			SurveyPeriodID: surveyPeriodID,
+			RegionFullCode: regionFullCode,
+		}, "Survey region sync already queued or running")
 	}
 
 	return respondAccepted(c, dto.QueuedSurveyTaskResponse{
@@ -315,6 +328,12 @@ func (h *SurveyHandler) AnalyzeSurvey(c fiber.Ctx) error {
 		return respondError(c, err)
 	}
 
+	if info == nil {
+		return respondAccepted(c, dto.QueuedSurveyTaskResponse{
+			SurveyPeriodID: surveyPeriodID,
+		}, "Survey analysis already queued or running")
+	}
+
 	return respondAccepted(c, dto.QueuedSurveyTaskResponse{
 		TaskID:         info.ID,
 		Queue:          info.Queue,
@@ -337,6 +356,13 @@ func (h *SurveyHandler) AnalyzeSurveyByRegion(c fiber.Ctx) error {
 	info, err := tasks.EnqueueSurveyAnalyzeRegion(c.Context(), h.queue, surveyPeriodID, regionFullCode)
 	if err != nil {
 		return respondError(c, err)
+	}
+
+	if info == nil {
+		return respondAccepted(c, dto.QueuedSurveyTaskResponse{
+			SurveyPeriodID: surveyPeriodID,
+			RegionFullCode: regionFullCode,
+		}, "Survey region analysis already queued or running")
 	}
 
 	return respondAccepted(c, dto.QueuedSurveyTaskResponse{
@@ -365,6 +391,13 @@ func (h *SurveyHandler) SyncSurveyRegions(c fiber.Ctx) error {
 	info, err := tasks.EnqueueSurveySyncRegion(c.Context(), h.queue, surveyPeriodID, req.RegionGroupID)
 	if err != nil {
 		return respondError(c, err)
+	}
+
+	if info == nil {
+		return respondAccepted(c, dto.QueuedSurveyTaskResponse{
+			SurveyPeriodID: surveyPeriodID,
+			RegionFullCode: req.RegionGroupID,
+		}, "Survey region sync already queued or running")
 	}
 
 	return respondAccepted(c, dto.QueuedSurveyTaskResponse{

@@ -94,6 +94,9 @@ type AssignmentRegionFilterQuery struct {
 	RegionLevel4   string `json:"region_level_4,omitempty"`
 	RegionLevel5   string `json:"region_level_5,omitempty"`
 	RegionLevel6   string `json:"region_level_6,omitempty"`
+	Assignment     string `json:"assignment_filter,omitempty"`
+	Page           int    `json:"page,omitempty"`
+	PerPage        int    `json:"per_page,omitempty"`
 }
 
 type SyncSurveyAssignmentsResponse struct {

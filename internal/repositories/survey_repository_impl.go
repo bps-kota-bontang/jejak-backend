@@ -204,7 +204,47 @@ func (r *SurveyRepositoryImpl) FindSurveyRegionsByLevel(surveyPeriodID string, l
 }
 
 func (r *SurveyRepositoryImpl) FindBySurveyPeriodIDWithFilter(surveyPeriodID string, filter AssignmentRegionFilter) ([]models.Region, error) {
-	query := r.db.Where("survey_period_id = ?", surveyPeriodID)
+	query := r.buildRegionFilterQuery(surveyPeriodID, filter)
+
+	var regions []models.Region
+	if err := query.Order("full_code ASC").Find(&regions).Error; err != nil {
+		return nil, err
+	}
+
+	return regions, nil
+}
+
+func (r *SurveyRepositoryImpl) FindBySurveyPeriodIDWithFilterPaginated(surveyPeriodID string, filter AssignmentRegionFilter, limit int, offset int) ([]models.Region, error) {
+	query := r.buildRegionFilterQuery(surveyPeriodID, filter)
+
+	if limit > 0 {
+		query = query.Limit(limit)
+	}
+	if offset > 0 {
+		query = query.Offset(offset)
+	}
+
+	var regions []models.Region
+	if err := query.Order("full_code ASC").Find(&regions).Error; err != nil {
+		return nil, err
+	}
+
+	return regions, nil
+}
+
+func (r *SurveyRepositoryImpl) CountBySurveyPeriodIDWithFilter(surveyPeriodID string, filter AssignmentRegionFilter) (int64, error) {
+	query := r.buildRegionFilterQuery(surveyPeriodID, filter)
+
+	var total int64
+	if err := query.Count(&total).Error; err != nil {
+		return 0, err
+	}
+
+	return total, nil
+}
+
+func (r *SurveyRepositoryImpl) buildRegionFilterQuery(surveyPeriodID string, filter AssignmentRegionFilter) *gorm.DB {
+	query := r.db.Model(&models.Region{}).Where("survey_period_id = ?", surveyPeriodID)
 
 	if strings.TrimSpace(filter.RegionFullCode) != "" {
 		query = query.Where("full_code = ?", strings.TrimSpace(filter.RegionFullCode))
@@ -228,10 +268,13 @@ func (r *SurveyRepositoryImpl) FindBySurveyPeriodIDWithFilter(surveyPeriodID str
 		query = query.Where("level6 = ?", strings.TrimSpace(filter.RegionLevel6))
 	}
 
-	var regions []models.Region
-	if err := query.Order("full_code ASC").Find(&regions).Error; err != nil {
-		return nil, err
+	assignment := strings.TrimSpace(filter.Assignment)
+	if assignment == "has" {
+		query = query.Where("assignment_count > 0")
+	}
+	if assignment == "none" {
+		query = query.Where("assignment_count = 0")
 	}
 
-	return regions, nil
+	return query
 }

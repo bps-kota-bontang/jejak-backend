@@ -321,7 +321,20 @@ func (s *SurveyService) GetRegionMetadataBySurveyPeriodID(surveyPeriodID string)
 	}, nil
 }
 
-func (s *SurveyService) GetRegionsBySurveyPeriodID(surveyPeriodID string, query dto.AssignmentRegionFilterQuery) ([]models.Region, error) {
+func (s *SurveyService) GetRegionsBySurveyPeriodID(surveyPeriodID string, query dto.AssignmentRegionFilterQuery) ([]models.Region, int64, error) {
+	page := query.Page
+	if page < 1 {
+		page = 1
+	}
+
+	perPage := query.PerPage
+	if perPage < 1 {
+		perPage = 10
+	}
+	if perPage > 1000 {
+		perPage = 1000
+	}
+
 	filter := repositories.AssignmentRegionFilter{
 		RegionFullCode: query.RegionFullCode,
 		RegionLevel1:   query.RegionLevel1,
@@ -330,9 +343,21 @@ func (s *SurveyService) GetRegionsBySurveyPeriodID(surveyPeriodID string, query 
 		RegionLevel4:   query.RegionLevel4,
 		RegionLevel5:   query.RegionLevel5,
 		RegionLevel6:   query.RegionLevel6,
+		Assignment:     query.Assignment,
 	}
 
-	return s.surveyRepo.FindBySurveyPeriodIDWithFilter(surveyPeriodID, filter)
+	total, err := s.surveyRepo.CountBySurveyPeriodIDWithFilter(surveyPeriodID, filter)
+	if err != nil {
+		return nil, 0, err
+	}
+
+	offset := (page - 1) * perPage
+	regions, err := s.surveyRepo.FindBySurveyPeriodIDWithFilterPaginated(surveyPeriodID, filter, perPage, offset)
+	if err != nil {
+		return nil, 0, err
+	}
+
+	return regions, total, nil
 }
 
 func (s *SurveyService) ImportSurveyRegions(ctx context.Context, surveyPeriodID string, raw []byte) (*dto.SyncSurveyRegionsResponse, error) {

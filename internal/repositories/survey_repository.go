@@ -14,4 +14,6 @@ type SurveyRepository interface {
 	ReplaceSurveyRegions(surveyPeriodID string, regions []models.Region) error
 	FindSurveyRegionsByLevel(surveyPeriodID string, level int, parentFullCode string) ([]models.Region, error)
 	FindBySurveyPeriodIDWithFilter(surveyPeriodID string, filter AssignmentRegionFilter) ([]models.Region, error)
+	FindBySurveyPeriodIDWithFilterPaginated(surveyPeriodID string, filter AssignmentRegionFilter, limit int, offset int) ([]models.Region, error)
+	CountBySurveyPeriodIDWithFilter(surveyPeriodID string, filter AssignmentRegionFilter) (int64, error)
 }

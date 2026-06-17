@@ -403,12 +403,26 @@ func (h *SurveyHandler) GetRegions(c fiber.Ctx) error {
 		RegionLevel4:   c.Query("region_level_4"),
 		RegionLevel5:   c.Query("region_level_5"),
 		RegionLevel6:   c.Query("region_level_6"),
+		Assignment:     c.Query("assignment_filter"),
+		Page:           fiber.Query[int](c, "page", 1),
+		PerPage:        fiber.Query[int](c, "per_page", 10),
 	}
 
-	regions, err := h.service.GetRegionsBySurveyPeriodID(surveyPeriodID, query)
+	if query.Page < 1 {
+		query.Page = 1
+	}
+	if query.PerPage < 1 {
+		query.PerPage = 10
+	}
+	if query.PerPage > 1000 {
+		query.PerPage = 1000
+	}
+
+	regions, total, err := h.service.GetRegionsBySurveyPeriodID(surveyPeriodID, query)
 	if err != nil {
 		return respondError(c, err)
 	}
 
-	return respondOK(c, mappers.ToSurveyRegionResponses(regions), "Survey regions retrieved successfully")
+	meta := utils.NewPaginationMeta(total, query.Page, query.PerPage)
+	return respondOKWithMeta(c, mappers.ToSurveyRegionResponses(regions), "Survey regions retrieved successfully", meta)
 }

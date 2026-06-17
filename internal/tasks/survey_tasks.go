@@ -117,7 +117,7 @@ func handleSurveySyncTask(surveyService *services.SurveyService, regionScoped bo
 		})
 		if err != nil {
 			log.Printf("[worker][sync][error] sync failed surveyPeriodID=%s regionFullCode=%s err=%v", payload.SurveyPeriodID, payload.RegionFullCode, err)
-			return fmt.Errorf("sync surveyPeriodID=%s regionFullCode=%s: %w", payload.SurveyPeriodID, payload.RegionFullCode, err)
+			return nil
 		}
 		if regionScoped {
 			log.Printf("[worker][sync] completed region task surveyPeriodID=%s regionFullCode=%s", payload.SurveyPeriodID, payload.RegionFullCode)
@@ -133,7 +133,7 @@ func handleSurveyAnalyzeTask(surveyService *services.SurveyService, regionScoped
 		var payload SurveyTaskPayload
 		if err := json.Unmarshal(task.Payload(), &payload); err != nil {
 			log.Printf("[worker][analyze][error] failed to unmarshal payload err=%v", err)
-			return fmt.Errorf("unmarshal survey analyze payload: %w", err)
+			return nil
 		}
 
 		log.Printf("[worker][analyze] start surveyPeriodID=%s regionFullCode=%s", payload.SurveyPeriodID, payload.RegionFullCode)
@@ -141,7 +141,7 @@ func handleSurveyAnalyzeTask(surveyService *services.SurveyService, regionScoped
 			_, err := surveyService.AnalyzeSurveyByRegion(ctx, payload.SurveyPeriodID, payload.RegionFullCode)
 			if err != nil {
 				log.Printf("[worker][analyze][error] analyze by region failed surveyPeriodID=%s regionFullCode=%s err=%v", payload.SurveyPeriodID, payload.RegionFullCode, err)
-				return fmt.Errorf("analyze surveyPeriodID=%s regionFullCode=%s: %w", payload.SurveyPeriodID, payload.RegionFullCode, err)
+				return nil
 			}
 			log.Printf("[worker][analyze] completed region task surveyPeriodID=%s regionFullCode=%s", payload.SurveyPeriodID, payload.RegionFullCode)
 			return nil
@@ -150,7 +150,7 @@ func handleSurveyAnalyzeTask(surveyService *services.SurveyService, regionScoped
 		_, err := surveyService.AnalyzeSurvey(ctx, payload.SurveyPeriodID)
 		if err != nil {
 			log.Printf("[worker][analyze][error] analyze failed surveyPeriodID=%s err=%v", payload.SurveyPeriodID, err)
-			return fmt.Errorf("analyze surveyPeriodID=%s: %w", payload.SurveyPeriodID, err)
+			return nil
 		}
 		log.Printf("[worker][analyze] completed survey task surveyPeriodID=%s", payload.SurveyPeriodID)
 		return nil

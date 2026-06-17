@@ -37,9 +37,9 @@ jobs:
           - target: app
             dockerfile: Dockerfile.app
             image_suffix: jejak-backend
-          # - target: worker
-          #   dockerfile: Dockerfile.worker
-          #   image_suffix: jejak-worker
+          - target: worker
+            dockerfile: Dockerfile.worker
+            image_suffix: jejak-worker
     steps:
       - name: Checkout Repository
         uses: actions/checkout@v4

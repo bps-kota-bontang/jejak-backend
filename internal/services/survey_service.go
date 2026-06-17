@@ -360,6 +360,116 @@ func (s *SurveyService) GetRegionsBySurveyPeriodID(surveyPeriodID string, query 
 	return regions, total, nil
 }
 
+func (s *SurveyService) GetRegionFilterOptions(surveyPeriodID string) (*dto.RegionFilterOptionsResponse, error) {
+	return s.GetRegionFilterOptionsWithFilters(surveyPeriodID, repositories.RegionLevelFilter{})
+}
+
+func (s *SurveyService) GetRegionFilterOptionsWithFilters(surveyPeriodID string, filter repositories.RegionLevelFilter) (*dto.RegionFilterOptionsResponse, error) {
+	// Calculate response depth: how many levels to include in response
+	// based on number of filters provided
+	filterCount := 0
+	if filter.Level1 != "" {
+		filterCount++
+	}
+	if filter.Level2 != "" {
+		filterCount++
+	}
+	if filter.Level3 != "" {
+		filterCount++
+	}
+	if filter.Level4 != "" {
+		filterCount++
+	}
+	if filter.Level5 != "" {
+		filterCount++
+	}
+
+	// Depth = max(3, filterCount + 1), capped at 6
+	// So: 0 filters → 3 levels, 1 filter → 3 levels, 2 filters → 3 levels, 3 filters → 4 levels, etc.
+	depth := filterCount + 1
+	if depth < 3 {
+		depth = 3
+	}
+	if depth > 6 {
+		depth = 6
+	}
+
+	// Only fetch the levels we need based on depth
+	toOptions := func(options []repositories.RegionLevelOption) []dto.RegionFilterOption {
+		dtoOptions := make([]dto.RegionFilterOption, len(options))
+		for i, opt := range options {
+			label := opt.Label
+			if label == "" {
+				label = opt.Value
+			}
+			dtoOptions[i] = dto.RegionFilterOption{
+				Value: opt.Value,
+				Label: label,
+			}
+		}
+		return dtoOptions
+	}
+
+	response := &dto.RegionFilterOptionsResponse{
+		Level1: make([]dto.RegionFilterOption, 0),
+		Level2: make([]dto.RegionFilterOption, 0),
+		Level3: make([]dto.RegionFilterOption, 0),
+		Level4: make([]dto.RegionFilterOption, 0),
+		Level5: make([]dto.RegionFilterOption, 0),
+		Level6: make([]dto.RegionFilterOption, 0),
+	}
+
+	if depth >= 1 {
+		level1, err := s.surveyRepo.GetDistinctRegionLevel1(surveyPeriodID)
+		if err != nil {
+			return nil, err
+		}
+		response.Level1 = toOptions(level1)
+	}
+
+	if depth >= 2 {
+		level2, err := s.surveyRepo.GetDistinctRegionLevel2(surveyPeriodID, repositories.RegionLevelFilter{Level1: filter.Level1})
+		if err != nil {
+			return nil, err
+		}
+		response.Level2 = toOptions(level2)
+	}
+
+	if depth >= 3 {
+		level3, err := s.surveyRepo.GetDistinctRegionLevel3(surveyPeriodID, repositories.RegionLevelFilter{Level1: filter.Level1, Level2: filter.Level2})
+		if err != nil {
+			return nil, err
+		}
+		response.Level3 = toOptions(level3)
+	}
+
+	if depth >= 4 {
+		level4, err := s.surveyRepo.GetDistinctRegionLevel4(surveyPeriodID, repositories.RegionLevelFilter{Level1: filter.Level1, Level2: filter.Level2, Level3: filter.Level3})
+		if err != nil {
+			return nil, err
+		}
+		response.Level4 = toOptions(level4)
+	}
+
+	if depth >= 5 {
+		level5, err := s.surveyRepo.GetDistinctRegionLevel5(surveyPeriodID, repositories.RegionLevelFilter{Level1: filter.Level1, Level2: filter.Level2, Level3: filter.Level3, Level4: filter.Level4})
+		if err != nil {
+			return nil, err
+		}
+		response.Level5 = toOptions(level5)
+	}
+
+	if depth >= 6 {
+		level6, err := s.surveyRepo.GetDistinctRegionLevel6(surveyPeriodID, repositories.RegionLevelFilter{Level1: filter.Level1, Level2: filter.Level2, Level3: filter.Level3, Level4: filter.Level4, Level5: filter.Level5})
+		if err != nil {
+			return nil, err
+		}
+		response.Level6 = toOptions(level6)
+	}
+
+	return response, nil
+}
+
 func (s *SurveyService) ImportSurveyRegions(ctx context.Context, surveyPeriodID string, raw []byte) (*dto.SyncSurveyRegionsResponse, error) {
 	_ = ctx
 

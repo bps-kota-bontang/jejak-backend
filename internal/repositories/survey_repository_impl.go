@@ -278,3 +278,60 @@ func (r *SurveyRepositoryImpl) buildRegionFilterQuery(surveyPeriodID string, fil
 
 	return query
 }
+
+func (r *SurveyRepositoryImpl) getDistinctRegionLevel(surveyPeriodID string, valueCol string, labelCol string, filter RegionLevelFilter) ([]RegionLevelOption, error) {
+	var options []RegionLevelOption
+	query := r.db.Model(&models.Region{}).
+		Where("survey_period_id = ?", surveyPeriodID).
+		Where(valueCol + " IS NOT NULL AND " + valueCol + " != ''")
+
+	// Apply parent filters
+	if filter.Level1 != "" {
+		query = query.Where("level1 = ?", filter.Level1)
+	}
+	if filter.Level2 != "" {
+		query = query.Where("level2 = ?", filter.Level2)
+	}
+	if filter.Level3 != "" {
+		query = query.Where("level3 = ?", filter.Level3)
+	}
+	if filter.Level4 != "" {
+		query = query.Where("level4 = ?", filter.Level4)
+	}
+	if filter.Level5 != "" {
+		query = query.Where("level5 = ?", filter.Level5)
+	}
+
+	if err := query.
+		Distinct(valueCol, labelCol).
+		Order(valueCol).
+		Select(valueCol + " as value, " + labelCol + " as label").
+		Scan(&options).Error; err != nil {
+		return nil, err
+	}
+	return options, nil
+}
+
+func (r *SurveyRepositoryImpl) GetDistinctRegionLevel1(surveyPeriodID string) ([]RegionLevelOption, error) {
+	return r.getDistinctRegionLevel(surveyPeriodID, "level1", "level1_label", RegionLevelFilter{})
+}
+
+func (r *SurveyRepositoryImpl) GetDistinctRegionLevel2(surveyPeriodID string, filter RegionLevelFilter) ([]RegionLevelOption, error) {
+	return r.getDistinctRegionLevel(surveyPeriodID, "level2", "level2_label", filter)
+}
+
+func (r *SurveyRepositoryImpl) GetDistinctRegionLevel3(surveyPeriodID string, filter RegionLevelFilter) ([]RegionLevelOption, error) {
+	return r.getDistinctRegionLevel(surveyPeriodID, "level3", "level3_label", filter)
+}
+
+func (r *SurveyRepositoryImpl) GetDistinctRegionLevel4(surveyPeriodID string, filter RegionLevelFilter) ([]RegionLevelOption, error) {
+	return r.getDistinctRegionLevel(surveyPeriodID, "level4", "level4_label", filter)
+}
+
+func (r *SurveyRepositoryImpl) GetDistinctRegionLevel5(surveyPeriodID string, filter RegionLevelFilter) ([]RegionLevelOption, error) {
+	return r.getDistinctRegionLevel(surveyPeriodID, "level5", "level5_label", filter)
+}
+
+func (r *SurveyRepositoryImpl) GetDistinctRegionLevel6(surveyPeriodID string, filter RegionLevelFilter) ([]RegionLevelOption, error) {
+	return r.getDistinctRegionLevel(surveyPeriodID, "level6", "level6_label", filter)
+}

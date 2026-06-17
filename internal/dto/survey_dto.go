@@ -269,3 +269,17 @@ type SurveyFraudAnalysisResult struct {
 	GeneratedAt         time.Time                  `json:"generated_at"`
 	Assignments         []AssignmentSurveyAnalysis `json:"assignments"`
 }
+
+type RegionFilterOption struct {
+	Value string `json:"value"`
+	Label string `json:"label"`
+}
+
+type RegionFilterOptionsResponse struct {
+	Level1 []RegionFilterOption `json:"level_1"`
+	Level2 []RegionFilterOption `json:"level_2"`
+	Level3 []RegionFilterOption `json:"level_3"`
+	Level4 []RegionFilterOption `json:"level_4"`
+	Level5 []RegionFilterOption `json:"level_5"`
+	Level6 []RegionFilterOption `json:"level_6"`
+}

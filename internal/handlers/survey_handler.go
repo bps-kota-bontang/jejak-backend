@@ -9,6 +9,7 @@ import (
 	"jejak/internal/dto"
 	apperrors "jejak/internal/errors"
 	"jejak/internal/mappers"
+	"jejak/internal/repositories"
 	"jejak/internal/services"
 	"jejak/internal/tasks"
 	"jejak/utils"
@@ -425,4 +426,27 @@ func (h *SurveyHandler) GetRegions(c fiber.Ctx) error {
 
 	meta := utils.NewPaginationMeta(total, query.Page, query.PerPage)
 	return respondOKWithMeta(c, mappers.ToSurveyRegionResponses(regions), "Survey regions retrieved successfully", meta)
+}
+
+func (h *SurveyHandler) GetRegionFilterOptions(c fiber.Ctx) error {
+	surveyPeriodID := c.Params("surveyPeriodId")
+	if surveyPeriodID == "" {
+		return respondError(c, apperrors.NewHttpError(fiber.StatusBadRequest, "surveyPeriodId is required"))
+	}
+
+	// Get filter parameters from query
+	filter := repositories.RegionLevelFilter{
+		Level1: c.Query("level1"),
+		Level2: c.Query("level2"),
+		Level3: c.Query("level3"),
+		Level4: c.Query("level4"),
+		Level5: c.Query("level5"),
+	}
+
+	result, err := h.service.GetRegionFilterOptionsWithFilters(surveyPeriodID, filter)
+	if err != nil {
+		return respondError(c, err)
+	}
+
+	return respondOK(c, result, "Region filter options retrieved successfully")
 }

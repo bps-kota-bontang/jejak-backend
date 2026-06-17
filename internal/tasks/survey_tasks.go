@@ -70,6 +70,7 @@ func RegisterSurveyTaskHandlers(mux *asynq.ServeMux, surveyService *services.Sur
 func enqueueSurveyTask(ctx context.Context, client *asynq.Client, taskType string, payload SurveyTaskPayload) (*asynq.TaskInfo, error) {
 	data, err := json.Marshal(payload)
 	if err != nil {
+		log.Printf("[task][error] failed to marshal payload type=%s surveyPeriodID=%s regionFullCode=%s err=%v", taskType, payload.SurveyPeriodID, payload.RegionFullCode, err)
 		return nil, fmt.Errorf("marshal survey task payload: %w", err)
 	}
 
@@ -83,6 +84,8 @@ func enqueueSurveyTask(ctx context.Context, client *asynq.Client, taskType strin
 	task := asynq.NewTask(taskType, data,
 		asynq.TaskID(taskID),
 		asynq.Timeout(syncTaskTimeout),
+		asynq.MaxRetry(0),
+		asynq.Unique(syncTaskTimeout),
 	)
 	info, err := client.EnqueueContext(ctx, task)
 	if err != nil {
@@ -92,6 +95,7 @@ func enqueueSurveyTask(ctx context.Context, client *asynq.Client, taskType strin
 			log.Printf("[task] skipped duplicate enqueue for taskID=%s", taskID)
 			return nil, nil
 		}
+		log.Printf("[task][error] enqueue failed type=%s taskID=%s surveyPeriodID=%s regionFullCode=%s err=%v", taskType, taskID, payload.SurveyPeriodID, payload.RegionFullCode, err)
 		return nil, fmt.Errorf("enqueue %s task: %w", taskType, err)
 	}
 
@@ -103,6 +107,7 @@ func handleSurveySyncTask(surveyService *services.SurveyService, regionScoped bo
 	return func(ctx context.Context, task *asynq.Task) error {
 		var payload SurveyTaskPayload
 		if err := json.Unmarshal(task.Payload(), &payload); err != nil {
+			log.Printf("[worker][sync][error] failed to unmarshal payload err=%v", err)
 			return fmt.Errorf("unmarshal survey sync payload: %w", err)
 		}
 
@@ -111,6 +116,7 @@ func handleSurveySyncTask(surveyService *services.SurveyService, regionScoped bo
 			RegionFullCode: payload.RegionFullCode,
 		})
 		if err != nil {
+			log.Printf("[worker][sync][error] sync failed surveyPeriodID=%s regionFullCode=%s err=%v", payload.SurveyPeriodID, payload.RegionFullCode, err)
 			return fmt.Errorf("sync surveyPeriodID=%s regionFullCode=%s: %w", payload.SurveyPeriodID, payload.RegionFullCode, err)
 		}
 		if regionScoped {
@@ -126,6 +132,7 @@ func handleSurveyAnalyzeTask(surveyService *services.SurveyService, regionScoped
 	return func(ctx context.Context, task *asynq.Task) error {
 		var payload SurveyTaskPayload
 		if err := json.Unmarshal(task.Payload(), &payload); err != nil {
+			log.Printf("[worker][analyze][error] failed to unmarshal payload err=%v", err)
 			return fmt.Errorf("unmarshal survey analyze payload: %w", err)
 		}
 
@@ -133,6 +140,7 @@ func handleSurveyAnalyzeTask(surveyService *services.SurveyService, regionScoped
 		if regionScoped {
 			_, err := surveyService.AnalyzeSurveyByRegion(ctx, payload.SurveyPeriodID, payload.RegionFullCode)
 			if err != nil {
+				log.Printf("[worker][analyze][error] analyze by region failed surveyPeriodID=%s regionFullCode=%s err=%v", payload.SurveyPeriodID, payload.RegionFullCode, err)
 				return fmt.Errorf("analyze surveyPeriodID=%s regionFullCode=%s: %w", payload.SurveyPeriodID, payload.RegionFullCode, err)
 			}
 			log.Printf("[worker][analyze] completed region task surveyPeriodID=%s regionFullCode=%s", payload.SurveyPeriodID, payload.RegionFullCode)
@@ -141,6 +149,7 @@ func handleSurveyAnalyzeTask(surveyService *services.SurveyService, regionScoped
 
 		_, err := surveyService.AnalyzeSurvey(ctx, payload.SurveyPeriodID)
 		if err != nil {
+			log.Printf("[worker][analyze][error] analyze failed surveyPeriodID=%s err=%v", payload.SurveyPeriodID, err)
 			return fmt.Errorf("analyze surveyPeriodID=%s: %w", payload.SurveyPeriodID, err)
 		}
 		log.Printf("[worker][analyze] completed survey task surveyPeriodID=%s", payload.SurveyPeriodID)

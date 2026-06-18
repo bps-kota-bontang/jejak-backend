@@ -27,7 +27,9 @@ type Assignment struct {
 	IsViolation    bool       `gorm:"not null;default:false"`
 	ViolationNote  *string    `gorm:"type:text"`
 	ViolationScore *float64   `gorm:"type:double precision"`
+	Answers        []Answer   `gorm:"foreignKey:AssignmentID;references:AssignmentID"`
 	Locations      []Location `gorm:"foreignKey:AssignmentID;references:AssignmentID"`
+	Logs           []Log      `gorm:"foreignKey:AssignmentID;references:AssignmentID"`
 	CreatedAt      time.Time
 	UpdatedAt      time.Time
 	DeletedAt      gorm.DeletedAt `gorm:"index"`

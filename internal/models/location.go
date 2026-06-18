@@ -8,9 +8,9 @@ import (
 
 type Location struct {
 	ID                     string     `gorm:"type:uuid;default:gen_random_uuid();primaryKey"`
-	AssignmentID           string     `gorm:"type:text;not null;index:idx_assignment_canonical_id,priority:1"`
+	AssignmentID           string     `gorm:"type:text;not null;uniqueIndex:idx_assignment_canonical_id,priority:1"`
 	Assignment             Assignment `gorm:"foreignKey:AssignmentID;references:AssignmentID"`
-	CanonicalID            string     `gorm:"type:text;not null;index:idx_assignment_canonical_id,priority:2"`
+	CanonicalID            string     `gorm:"type:text;not null;uniqueIndex:idx_assignment_canonical_id,priority:2"`
 	Latitude               float64    `gorm:"type:double precision;not null"`
 	Longitude              float64    `gorm:"type:double precision;not null"`
 	AnswerCount            int        `gorm:"not null;default:0"`

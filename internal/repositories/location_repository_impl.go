@@ -4,6 +4,7 @@ import (
 	"jejak/internal/models"
 
 	"gorm.io/gorm"
+	"gorm.io/gorm/clause"
 )
 
 type LocationRepositoryImpl struct {
@@ -16,13 +17,25 @@ func NewLocationRepository(db *gorm.DB) LocationRepository {
 
 func (r *LocationRepositoryImpl) ReplaceByAssignmentID(assignmentID string, locations []models.Location) error {
 	return r.db.Transaction(func(tx *gorm.DB) error {
-		if err := tx.Where("assignment_id = ?", assignmentID).Delete(&models.Location{}).Error; err != nil {
-			return err
-		}
 		if len(locations) == 0 {
 			return nil
 		}
-		return tx.Create(&locations).Error
+
+		return tx.Clauses(clause.OnConflict{
+			Columns: []clause.Column{
+				{Name: "assignment_id"},
+				{Name: "canonical_id"},
+			},
+			DoUpdates: clause.AssignmentColumns([]string{
+				"latitude",
+				"longitude",
+				"answer_count",
+				"proportion",
+				"distance_to_sample_meters",
+				"within_sample_area_radius",
+				"updated_at",
+			}),
+		}).Create(&locations).Error
 	})
 }
 

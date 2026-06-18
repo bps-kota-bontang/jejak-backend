@@ -54,6 +54,48 @@ func NewDBConnection(cfg *config.DatabaseConfig) (*gorm.DB, error) {
 		return nil, err
 	}
 
+	// Backfill event_hash for existing logs with NULL or empty hash, and cleanup duplicates
+	if err := backfillLogEventHashes(db); err != nil {
+		log.Printf("Warning: failed to backfill log event hashes: %v", err)
+	}
+
 	log.Println("Database connection established successfully")
 	return db, nil
+}
+
+func backfillLogEventHashes(db *gorm.DB) error {
+	var logsWithoutHash []models.Log
+	if err := db.Where("event_hash IS NULL OR event_hash = ''").Order("assignment_id, created_at ASC").Find(&logsWithoutHash).Error; err != nil {
+		return err
+	}
+
+	if len(logsWithoutHash) == 0 {
+		return nil
+	}
+
+	logsByAssignment := make(map[string][]models.Log)
+	for _, item := range logsWithoutHash {
+		logsByAssignment[item.AssignmentID] = append(logsByAssignment[item.AssignmentID], item)
+	}
+
+	return db.Transaction(func(tx *gorm.DB) error {
+		for assignmentID, logs := range logsByAssignment {
+			seenHashes := make(map[string]string)
+			for _, item := range logs {
+				hash := models.BuildLogEventHash(item.AssignmentID, item.Action, item.Latitude, item.Longitude, item.ActionedAt)
+
+				if _, exists := seenHashes[hash]; exists {
+					continue
+				}
+
+				seenHashes[hash] = item.ID
+				if err := tx.Model(&models.Log{}).Where("id = ?", item.ID).Update("event_hash", hash).Error; err != nil {
+					return err
+				}
+			}
+
+			log.Printf("Backfilled event_hash for %d logs in assignment %s", len(seenHashes), assignmentID)
+		}
+		return nil
+	})
 }

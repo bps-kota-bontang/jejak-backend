@@ -607,6 +607,7 @@ func (s *SurveyService) ImportSurveyAssignments(ctx context.Context, surveyPerio
 	}
 
 	logsByAssignment := make(map[string][]models.Log)
+	seenLogHashesByAssignment := make(map[string]map[string]struct{})
 	for _, item := range payload.Logs {
 		assignmentID := strings.TrimSpace(item.AssignmentID)
 		if assignmentID == "" {
@@ -621,8 +622,18 @@ func (s *SurveyService) ImportSurveyAssignments(ctx context.Context, surveyPerio
 			continue
 		}
 
+		hash := models.BuildLogEventHash(assignmentID, strings.TrimSpace(item.Action), item.Latitude, item.Longitude, actionedAt)
+		if _, ok := seenLogHashesByAssignment[assignmentID]; !ok {
+			seenLogHashesByAssignment[assignmentID] = make(map[string]struct{})
+		}
+		if _, exists := seenLogHashesByAssignment[assignmentID][hash]; exists {
+			continue
+		}
+		seenLogHashesByAssignment[assignmentID][hash] = struct{}{}
+
 		logsByAssignment[assignmentID] = append(logsByAssignment[assignmentID], models.Log{
 			AssignmentID: assignmentID,
+			EventHash:    hash,
 			Action:       strings.TrimSpace(item.Action),
 			Latitude:     item.Latitude,
 			Longitude:    item.Longitude,
@@ -1490,6 +1501,7 @@ func shouldSkipRegionItem(item dto.FasihRegionItem) bool {
 
 func extractLogsFromHistory(assignmentID string, items []dto.FasihAssignmentHistory) ([]models.Log, error) {
 	logs := make([]models.Log, 0)
+	seen := make(map[string]struct{})
 	for _, item := range items {
 		if len(item.Paradata) == 0 {
 			continue
@@ -1506,8 +1518,16 @@ func extractLogsFromHistory(assignmentID string, items []dto.FasihAssignmentHist
 				return nil, err
 			}
 
+			hash := models.BuildLogEventHash(assignmentID, entity.Action, entity.Latitude, entity.Longitude, t)
+			if _, ok := seen[hash]; ok {
+				continue
+			}
+
+			seen[hash] = struct{}{}
+
 			logs = append(logs, models.Log{
 				AssignmentID: assignmentID,
+				EventHash:    hash,
 				Action:       entity.Action,
 				Latitude:     entity.Latitude,
 				Longitude:    entity.Longitude,

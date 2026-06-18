@@ -5,6 +5,7 @@ import (
 	"time"
 
 	"gorm.io/gorm"
+	"gorm.io/gorm/clause"
 )
 
 type LogRepositoryImpl struct {
@@ -16,15 +17,16 @@ func NewLogRepository(db *gorm.DB) LogRepository {
 }
 
 func (r *LogRepositoryImpl) ReplaceByAssignmentID(assignmentID string, logs []models.Log) error {
-	return r.db.Transaction(func(tx *gorm.DB) error {
-		if err := tx.Where("assignment_id = ?", assignmentID).Delete(&models.Log{}).Error; err != nil {
-			return err
-		}
-		if len(logs) == 0 {
-			return nil
-		}
-		return tx.Create(&logs).Error
-	})
+	if len(logs) == 0 {
+		return nil
+	}
+
+	return r.db.
+		Clauses(clause.OnConflict{
+			Columns:   []clause.Column{{Name: "assignment_id"}, {Name: "event_hash"}},
+			DoNothing: true,
+		}).
+		Create(&logs).Error
 }
 
 func (r *LogRepositoryImpl) FindByAssignmentID(assignmentID string) ([]models.Log, error) {

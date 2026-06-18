@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"net"
 	"net/http"
 	"net/url"
 	"strings"
@@ -153,27 +154,159 @@ func (s *FasihService) GetAssignmentDatatable(ctx context.Context, creds dto.Fas
 		return nil, err
 	}
 
-	httpReq, err := http.NewRequestWithContext(ctx, http.MethodPost, s.cfg.BaseURL+fasihDatatablePath, bytes.NewReader(rawBody))
-	if err != nil {
-		return nil, err
-	}
-
-	httpReq.Header.Set("Content-Type", "application/json")
-	setFasihHeaders(httpReq, creds)
-
-	client := &http.Client{Timeout: 30 * time.Second}
-	resp, err := client.Do(httpReq)
-	if err != nil {
-		return nil, err
-	}
-	defer resp.Body.Close()
-
 	var result dto.FasihDatatableResponse
-	if err := decodeFasihJSONResponse(resp, &result, fasihDatatablePath); err != nil {
+	if err := s.doJSONRequestWithRetry(ctx, creds, http.MethodPost, s.cfg.BaseURL+fasihDatatablePath, fasihDatatablePath, rawBody, &result); err != nil {
 		return nil, err
 	}
 
 	return &result, nil
+}
+
+func shouldRetryFasihRequest(err error, statusCode int, attempt, maxAttempts int) bool {
+	if attempt >= maxAttempts {
+		return false
+	}
+
+	if statusCode == http.StatusTooManyRequests || statusCode >= http.StatusInternalServerError {
+		return true
+	}
+
+	if errors.Is(err, context.DeadlineExceeded) {
+		return true
+	}
+
+	var netErr net.Error
+	if errors.As(err, &netErr) && netErr.Timeout() {
+		return true
+	}
+
+	errText := strings.ToLower(err.Error())
+	if strings.Contains(errText, "client.timeout exceeded") || strings.Contains(errText, "timeout") {
+		return true
+	}
+
+	return false
+}
+
+func (s *FasihService) doJSONRequestWithRetry(
+	ctx context.Context,
+	creds dto.FasihCredentials,
+	method string,
+	url string,
+	endpoint string,
+	body []byte,
+	out interface{},
+) error {
+	maxAttempts := s.cfg.HttpMaxRetries
+	timeout := time.Duration(s.cfg.HttpTimeoutSeconds) * time.Second
+	if maxAttempts < 1 {
+		maxAttempts = 1
+	}
+	if timeout <= 0 {
+		timeout = 75 * time.Second
+	}
+
+	var lastErr error
+	for attempt := 1; attempt <= maxAttempts; attempt++ {
+		attemptCtx, cancel := context.WithTimeout(ctx, timeout)
+
+		var requestBody io.Reader
+		if len(body) > 0 {
+			requestBody = bytes.NewReader(body)
+		}
+
+		httpReq, err := http.NewRequestWithContext(attemptCtx, method, url, requestBody)
+		if err != nil {
+			cancel()
+			return err
+		}
+
+		if len(body) > 0 {
+			httpReq.Header.Set("Content-Type", "application/json")
+		}
+		setFasihHeaders(httpReq, creds)
+
+		resp, doErr := (&http.Client{}).Do(httpReq)
+		if doErr != nil {
+			cancel()
+			lastErr = doErr
+			if shouldRetryFasihRequest(doErr, 0, attempt, maxAttempts) {
+				if sleepErr := waitBeforeRetry(ctx, retryDelay(attempt, s.cfg.HttpRetryBaseDelayMs)); sleepErr != nil {
+					return sleepErr
+				}
+				continue
+			}
+			return doErr
+		}
+
+		if resp.StatusCode == http.StatusTooManyRequests || resp.StatusCode >= http.StatusInternalServerError {
+			_, _ = io.Copy(io.Discard, resp.Body)
+			resp.Body.Close()
+			cancel()
+
+			lastErr = fmt.Errorf("fasih: %s returned status %s", endpoint, resp.Status)
+			if shouldRetryFasihRequest(lastErr, resp.StatusCode, attempt, maxAttempts) {
+				if sleepErr := waitBeforeRetry(ctx, retryDelay(attempt, s.cfg.HttpRetryBaseDelayMs)); sleepErr != nil {
+					return sleepErr
+				}
+				continue
+			}
+			return lastErr
+		}
+
+		decodeErr := decodeFasihJSONResponse(resp, out, endpoint)
+		resp.Body.Close()
+		cancel()
+		if decodeErr != nil {
+			lastErr = decodeErr
+			if shouldRetryFasihRequest(decodeErr, resp.StatusCode, attempt, maxAttempts) {
+				if sleepErr := waitBeforeRetry(ctx, retryDelay(attempt, s.cfg.HttpRetryBaseDelayMs)); sleepErr != nil {
+					return sleepErr
+				}
+				continue
+			}
+			return decodeErr
+		}
+
+		return nil
+	}
+
+	if lastErr == nil {
+		lastErr = fmt.Errorf("fasih: request failed after retries")
+	}
+
+	return fmt.Errorf("fasih: request to %s failed after %d attempts: %w", endpoint, maxAttempts, lastErr)
+}
+
+func retryDelay(attempt int, baseDelayMs int) time.Duration {
+	if baseDelayMs < 100 {
+		baseDelayMs = 1500
+	}
+
+	base := time.Duration(baseDelayMs) * time.Millisecond
+	if attempt <= 1 {
+		return base
+	}
+
+	factor := 1 << (attempt - 1)
+	delay := time.Duration(factor) * base
+	if delay > 20*time.Second {
+		return 20 * time.Second
+	}
+
+	return delay
+}
+
+func waitBeforeRetry(ctx context.Context, delay time.Duration) error {
+	timer := time.NewTimer(delay)
+	defer timer.Stop()
+
+	select {
+	case <-ctx.Done():
+		return ctx.Err()
+	case <-timer.C:
+		return nil
+	}
 }
 
 func (s *FasihService) GetAssignmentByID(ctx context.Context, creds dto.FasihCredentials, req dto.FasihAssignmentByIDRequest) (*dto.FasihAssignmentByIDResponse, error) {
@@ -190,22 +323,8 @@ func (s *FasihService) GetAssignmentByID(ctx context.Context, creds dto.FasihCre
 	query.Set("assignmentId", req.AssignmentID)
 	endpoint.RawQuery = query.Encode()
 
-	httpReq, err := http.NewRequestWithContext(ctx, http.MethodGet, endpoint.String(), nil)
-	if err != nil {
-		return nil, err
-	}
-
-	setFasihHeaders(httpReq, creds)
-
-	client := &http.Client{Timeout: 30 * time.Second}
-	resp, err := client.Do(httpReq)
-	if err != nil {
-		return nil, err
-	}
-	defer resp.Body.Close()
-
 	var result dto.FasihAssignmentByIDResponse
-	if err := decodeFasihJSONResponse(resp, &result, fasihAssignmentByIDPath); err != nil {
+	if err := s.doJSONRequestWithRetry(ctx, creds, http.MethodGet, endpoint.String(), fasihAssignmentByIDPath, nil, &result); err != nil {
 		return nil, err
 	}
 
@@ -226,22 +345,8 @@ func (s *FasihService) GetAssignmentHistoryByID(ctx context.Context, creds dto.F
 	query.Set("assignmentId", req.AssignmentID)
 	endpoint.RawQuery = query.Encode()
 
-	httpReq, err := http.NewRequestWithContext(ctx, http.MethodGet, endpoint.String(), nil)
-	if err != nil {
-		return nil, err
-	}
-
-	setFasihHeaders(httpReq, creds)
-
-	client := &http.Client{Timeout: 30 * time.Second}
-	resp, err := client.Do(httpReq)
-	if err != nil {
-		return nil, err
-	}
-	defer resp.Body.Close()
-
 	var result dto.FasihAssignmentHistoryByIDResponse
-	if err := decodeFasihJSONResponse(resp, &result, fasihAssignmentHistoryByIDPath); err != nil {
+	if err := s.doJSONRequestWithRetry(ctx, creds, http.MethodGet, endpoint.String(), fasihAssignmentHistoryByIDPath, nil, &result); err != nil {
 		return nil, err
 	}
 
@@ -262,22 +367,8 @@ func (s *FasihService) GetRegionMetadata(ctx context.Context, creds dto.FasihCre
 	query.Set("id", req.GroupID)
 	endpoint.RawQuery = query.Encode()
 
-	httpReq, err := http.NewRequestWithContext(ctx, http.MethodGet, endpoint.String(), nil)
-	if err != nil {
-		return nil, err
-	}
-
-	setFasihHeaders(httpReq, creds)
-
-	client := &http.Client{Timeout: 30 * time.Second}
-	resp, err := client.Do(httpReq)
-	if err != nil {
-		return nil, err
-	}
-	defer resp.Body.Close()
-
 	var result dto.FasihRegionMetadataByGroupResponse
-	if err := decodeFasihJSONResponse(resp, &result, fasihRegionMetadataPath); err != nil {
+	if err := s.doJSONRequestWithRetry(ctx, creds, http.MethodGet, endpoint.String(), fasihRegionMetadataPath, nil, &result); err != nil {
 		return nil, err
 	}
 
@@ -289,22 +380,8 @@ func (s *FasihService) GetSurveyByID(ctx context.Context, creds dto.FasihCredent
 		return nil, errors.New("fasih: survey id is required")
 	}
 
-	httpReq, err := http.NewRequestWithContext(ctx, http.MethodGet, s.cfg.BaseURL+fasihSurveyByIDPath+"/"+req.SurveyID, nil)
-	if err != nil {
-		return nil, err
-	}
-
-	setFasihHeaders(httpReq, creds)
-
-	client := &http.Client{Timeout: 30 * time.Second}
-	resp, err := client.Do(httpReq)
-	if err != nil {
-		return nil, err
-	}
-	defer resp.Body.Close()
-
 	var result dto.FasihSurveyByIDResponse
-	if err := decodeFasihJSONResponse(resp, &result, fasihSurveyByIDPath+"/{surveyId}"); err != nil {
+	if err := s.doJSONRequestWithRetry(ctx, creds, http.MethodGet, s.cfg.BaseURL+fasihSurveyByIDPath+"/"+req.SurveyID, fasihSurveyByIDPath+"/{surveyId}", nil, &result); err != nil {
 		return nil, err
 	}
 
@@ -336,22 +413,8 @@ func (s *FasihService) GetRegionsByLevel(ctx context.Context, creds dto.FasihCre
 	}
 	endpoint.RawQuery = query.Encode()
 
-	httpReq, err := http.NewRequestWithContext(ctx, http.MethodGet, endpoint.String(), nil)
-	if err != nil {
-		return nil, err
-	}
-
-	setFasihHeaders(httpReq, creds)
-
-	client := &http.Client{Timeout: 30 * time.Second}
-	resp, err := client.Do(httpReq)
-	if err != nil {
-		return nil, err
-	}
-	defer resp.Body.Close()
-
 	var result dto.FasihRegionListResponse
-	if err := decodeFasihJSONResponse(resp, &result, path); err != nil {
+	if err := s.doJSONRequestWithRetry(ctx, creds, http.MethodGet, endpoint.String(), path, nil, &result); err != nil {
 		return nil, err
 	}
 

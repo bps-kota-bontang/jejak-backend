@@ -4,6 +4,7 @@ import (
 	"jejak/internal/models"
 
 	"gorm.io/gorm"
+	"gorm.io/gorm/clause"
 )
 
 type AnswerRepositoryImpl struct {
@@ -16,13 +17,22 @@ func NewAnswerRepository(db *gorm.DB) AnswerRepository {
 
 func (r *AnswerRepositoryImpl) ReplaceByAssignmentID(assignmentID string, answers []models.Answer) error {
 	return r.db.Transaction(func(tx *gorm.DB) error {
-		if err := tx.Where("assignment_id = ?", assignmentID).Delete(&models.Answer{}).Error; err != nil {
-			return err
-		}
 		if len(answers) == 0 {
 			return nil
 		}
-		return tx.Create(&answers).Error
+
+		return tx.Clauses(clause.OnConflict{
+			Columns: []clause.Column{
+				{Name: "assignment_id"},
+				{Name: "name"},
+			},
+			DoUpdates: clause.AssignmentColumns([]string{
+				"location_id",
+				"answered_at",
+				"revised_at",
+				"updated_at",
+			}),
+		}).Create(&answers).Error
 	})
 }
 

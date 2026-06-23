@@ -59,8 +59,12 @@ func NewSurveyService(
 }
 
 func (s *SurveyService) AnalyzeSurvey(ctx context.Context, surveyPeriodID string) (*dto.SurveyFraudAnalysisResult, error) {
+	startedAt := time.Now()
+	log.Printf("[analyze] start surveyPeriodID=%s", surveyPeriodID)
+
 	assignments, err := s.assignmentRepo.FindBySurveyPeriodID(surveyPeriodID)
 	if err != nil {
+		log.Printf("[analyze][error] load assignments failed surveyPeriodID=%s err=%v", surveyPeriodID, err)
 		return nil, err
 	}
 
@@ -74,27 +78,40 @@ func (s *SurveyService) AnalyzeSurvey(ctx context.Context, surveyPeriodID string
 	for _, assignment := range assignments {
 		select {
 		case <-ctx.Done():
+			log.Printf("[analyze][error] canceled surveyPeriodID=%s err=%v", surveyPeriodID, ctx.Err())
 			return nil, ctx.Err()
 		default:
 		}
 
 		analysis, err := s.assignmentSvc.AnalyzeAssignment(ctx, assignment.AssignmentID)
 		if err != nil {
+			log.Printf("[analyze][error] analyze assignment failed surveyPeriodID=%s assignmentID=%s err=%v", surveyPeriodID, assignment.AssignmentID, err)
 			return nil, fmt.Errorf("analyze assignment %s: %w", assignment.AssignmentID, err)
 		}
 
 		result.AnalyzedAssignments++
 		result.Assignments = append(result.Assignments, *analysis)
+
+		if result.AnalyzedAssignments%10 == 0 || result.AnalyzedAssignments == result.TotalAssignments {
+			log.Printf("[analyze] progress surveyPeriodID=%s analyzed=%d/%d", surveyPeriodID, result.AnalyzedAssignments, result.TotalAssignments)
+		}
 	}
+
+	log.Printf("[analyze] completed surveyPeriodID=%s analyzed=%d total=%d duration=%s", surveyPeriodID, result.AnalyzedAssignments, result.TotalAssignments, time.Since(startedAt).Round(time.Second))
 
 	return result, nil
 }
 
 func (s *SurveyService) AnalyzeSurveyByRegion(ctx context.Context, surveyPeriodID string, regionFullCode string) (*dto.SurveyFraudAnalysisResult, error) {
+	startedAt := time.Now()
+	trimmedRegionFullCode := strings.TrimSpace(regionFullCode)
+	log.Printf("[analyze] start surveyPeriodID=%s regionFullCode=%s", surveyPeriodID, trimmedRegionFullCode)
+
 	assignments, err := s.assignmentRepo.FindBySurveyPeriodIDWithFilter(surveyPeriodID, repositories.AssignmentRegionFilter{
-		RegionFullCode: strings.TrimSpace(regionFullCode),
+		RegionFullCode: trimmedRegionFullCode,
 	})
 	if err != nil {
+		log.Printf("[analyze][error] load assignments by region failed surveyPeriodID=%s regionFullCode=%s err=%v", surveyPeriodID, trimmedRegionFullCode, err)
 		return nil, err
 	}
 
@@ -108,18 +125,26 @@ func (s *SurveyService) AnalyzeSurveyByRegion(ctx context.Context, surveyPeriodI
 	for _, assignment := range assignments {
 		select {
 		case <-ctx.Done():
+			log.Printf("[analyze][error] canceled surveyPeriodID=%s regionFullCode=%s err=%v", surveyPeriodID, trimmedRegionFullCode, ctx.Err())
 			return nil, ctx.Err()
 		default:
 		}
 
 		analysis, err := s.assignmentSvc.AnalyzeAssignment(ctx, assignment.AssignmentID)
 		if err != nil {
+			log.Printf("[analyze][error] analyze assignment failed surveyPeriodID=%s regionFullCode=%s assignmentID=%s err=%v", surveyPeriodID, trimmedRegionFullCode, assignment.AssignmentID, err)
 			return nil, fmt.Errorf("analyze assignment %s: %w", assignment.AssignmentID, err)
 		}
 
 		result.AnalyzedAssignments++
 		result.Assignments = append(result.Assignments, *analysis)
+
+		if result.AnalyzedAssignments%10 == 0 || result.AnalyzedAssignments == result.TotalAssignments {
+			log.Printf("[analyze] progress surveyPeriodID=%s regionFullCode=%s analyzed=%d/%d", surveyPeriodID, trimmedRegionFullCode, result.AnalyzedAssignments, result.TotalAssignments)
+		}
 	}
+
+	log.Printf("[analyze] completed surveyPeriodID=%s regionFullCode=%s analyzed=%d total=%d duration=%s", surveyPeriodID, trimmedRegionFullCode, result.AnalyzedAssignments, result.TotalAssignments, time.Since(startedAt).Round(time.Second))
 
 	return result, nil
 }

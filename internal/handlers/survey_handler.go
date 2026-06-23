@@ -342,23 +342,42 @@ func (h *SurveyHandler) AnalyzeSurvey(c fiber.Ctx) error {
 		return respondError(c, apperrors.NewHttpError(fiber.StatusForbidden, "You are not authorized to analyze all assignments"))
 	}
 
-	info, err := tasks.EnqueueSurveyAnalyze(c.Context(), h.queue, surveyPeriodID)
+	regionTargets, err := h.service.GetSyncRegionTargets(surveyPeriodID)
 	if err != nil {
 		return respondError(c, err)
 	}
 
-	if info == nil {
-		return respondAccepted(c, dto.QueuedSurveyTaskResponse{
-			SurveyPeriodID: surveyPeriodID,
-		}, "Survey analysis already queued or running")
+	queuedTasks := 0
+	alreadyQueued := 0
+	for _, regionFullCode := range regionTargets {
+		info, err := tasks.EnqueueSurveyAnalyzeRegion(c.Context(), h.queue, surveyPeriodID, regionFullCode)
+		if err != nil {
+			return respondError(c, err)
+		}
+
+		if info == nil {
+			alreadyQueued++
+			continue
+		}
+
+		queuedTasks++
 	}
 
-	return respondAccepted(c, dto.QueuedSurveyTaskResponse{
-		TaskID:         info.ID,
-		Queue:          info.Queue,
-		Type:           info.Type,
-		SurveyPeriodID: surveyPeriodID,
-	}, "Survey analysis queued successfully")
+	if queuedTasks == 0 {
+		return respondAccepted(c, fiber.Map{
+			"survey_period_id": surveyPeriodID,
+			"total_regions":    len(regionTargets),
+			"queued_tasks":     0,
+			"already_queued":   alreadyQueued,
+		}, "All survey region analysis tasks are already queued or running")
+	}
+
+	return respondAccepted(c, fiber.Map{
+		"survey_period_id": surveyPeriodID,
+		"total_regions":    len(regionTargets),
+		"queued_tasks":     queuedTasks,
+		"already_queued":   alreadyQueued,
+	}, "Survey region analysis tasks queued successfully")
 }
 
 func (h *SurveyHandler) AnalyzeSurveyByRegion(c fiber.Ctx) error {

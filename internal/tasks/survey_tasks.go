@@ -19,6 +19,10 @@ import (
 // Asynq will consider the task timed out and retry if it exceeds this limit.
 const syncTaskTimeout = 60 * time.Minute
 
+// uniqueTaskTTL controls how long Asynq deduplication lock is kept.
+// Keep it shorter than execution timeout so manual retries are not blocked too long.
+const uniqueTaskTTL = 10 * time.Minute
+
 const (
 	TypeSurveySync          = "survey:sync"
 	TypeSurveySyncRegion    = "survey:sync_region"
@@ -85,14 +89,15 @@ func enqueueSurveyTask(ctx context.Context, client *asynq.Client, taskType strin
 		asynq.TaskID(taskID),
 		asynq.Timeout(syncTaskTimeout),
 		asynq.MaxRetry(0),
-		asynq.Unique(syncTaskTimeout),
+		asynq.Unique(uniqueTaskTTL),
 	)
 	info, err := client.EnqueueContext(ctx, task)
 	if err != nil {
-		// If a task with the same ID is already pending or active, treat it as
-		// a no-op rather than returning an error to the caller.
-		if errors.Is(err, asynq.ErrTaskIDConflict) {
-			log.Printf("[task] skipped duplicate enqueue for taskID=%s", taskID)
+		// Treat duplicate/conflict as no-op so callers can retry safely.
+		// - ErrTaskIDConflict comes from TaskID collision.
+		// - ErrDuplicateTask comes from Unique lock still active.
+		if errors.Is(err, asynq.ErrTaskIDConflict) || errors.Is(err, asynq.ErrDuplicateTask) {
+			log.Printf("[task] skipped duplicate enqueue for taskID=%s reason=%v", taskID, err)
 			return nil, nil
 		}
 		log.Printf("[task][error] enqueue failed type=%s taskID=%s surveyPeriodID=%s regionFullCode=%s err=%v", taskType, taskID, payload.SurveyPeriodID, payload.RegionFullCode, err)

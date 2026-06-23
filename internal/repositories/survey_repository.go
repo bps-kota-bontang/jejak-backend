@@ -24,6 +24,7 @@ type SurveyRepository interface {
 	FindBySurveyPeriodID(surveyPeriodID string) (*models.Survey, error)
 	UpdateRegionMetadata(surveyPeriodID string, groupID string, levelCount int) error
 	UpdateSurveyRegionAssignmentCounts(surveyPeriodID string) error
+	UpdateSurveyRegionAssignmentCountsByRegion(surveyPeriodID string, regionFullCode string) error
 	ReplaceSurveyRegions(surveyPeriodID string, regions []models.Region) error
 	FindSurveyRegionsByLevel(surveyPeriodID string, level int, parentFullCode string) ([]models.Region, error)
 	FindBySurveyPeriodIDWithFilter(surveyPeriodID string, filter AssignmentRegionFilter) ([]models.Region, error)

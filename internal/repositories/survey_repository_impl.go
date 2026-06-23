@@ -143,6 +143,66 @@ func (r *SurveyRepositoryImpl) UpdateSurveyRegionAssignmentCounts(surveyPeriodID
 	})
 }
 
+func (r *SurveyRepositoryImpl) UpdateSurveyRegionAssignmentCountsByRegion(surveyPeriodID string, regionFullCode string) error {
+	trimmedRegionFullCode := strings.TrimSpace(regionFullCode)
+	if trimmedRegionFullCode == "" {
+		return nil
+	}
+
+	return r.db.Model(&models.Region{}).
+		Where("survey_period_id = ? AND full_code = ?", surveyPeriodID, trimmedRegionFullCode).
+		Updates(map[string]interface{}{
+			"assignment_count": gorm.Expr(`
+				COALESCE((
+					SELECT COUNT(*)
+					FROM assignments a
+					WHERE a.survey_period_id = regions.survey_period_id
+					  AND a.region_full_code = regions.full_code
+				), 0)
+			`),
+			"draft_count": gorm.Expr(`
+				COALESCE((
+					SELECT SUM(CASE WHEN a.status = ? THEN 1 ELSE 0 END)
+					FROM assignments a
+					WHERE a.survey_period_id = regions.survey_period_id
+					  AND a.region_full_code = regions.full_code
+				), 0)
+			`, models.AssignmentStatusDraft),
+			"submitted_count": gorm.Expr(`
+				COALESCE((
+					SELECT SUM(CASE WHEN a.status = ? THEN 1 ELSE 0 END)
+					FROM assignments a
+					WHERE a.survey_period_id = regions.survey_period_id
+					  AND a.region_full_code = regions.full_code
+				), 0)
+			`, models.AssignmentStatusSubmitted),
+			"approved_count": gorm.Expr(`
+				COALESCE((
+					SELECT SUM(CASE WHEN a.status = ? THEN 1 ELSE 0 END)
+					FROM assignments a
+					WHERE a.survey_period_id = regions.survey_period_id
+					  AND a.region_full_code = regions.full_code
+				), 0)
+			`, models.AssignmentStatusApproved),
+			"rejected_count": gorm.Expr(`
+				COALESCE((
+					SELECT SUM(CASE WHEN a.status = ? THEN 1 ELSE 0 END)
+					FROM assignments a
+					WHERE a.survey_period_id = regions.survey_period_id
+					  AND a.region_full_code = regions.full_code
+				), 0)
+			`, models.AssignmentStatusRejected),
+			"revoked_count": gorm.Expr(`
+				COALESCE((
+					SELECT SUM(CASE WHEN a.status = ? THEN 1 ELSE 0 END)
+					FROM assignments a
+					WHERE a.survey_period_id = regions.survey_period_id
+					  AND a.region_full_code = regions.full_code
+				), 0)
+			`, models.AssignmentStatusRevoked),
+		}).Error
+}
+
 func (r *SurveyRepositoryImpl) ReplaceSurveyRegions(surveyPeriodID string, regions []models.Region) error {
 	return r.db.Transaction(func(tx *gorm.DB) error {
 		if err := tx.Where("survey_period_id = ?", surveyPeriodID).Delete(&models.Region{}).Error; err != nil {

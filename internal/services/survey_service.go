@@ -1252,8 +1252,14 @@ func (s *SurveyService) SyncSurveyAssignments(ctx context.Context, surveyPeriodI
 
 	result.TotalAssignments = matchedAssignments
 
-	if err := s.surveyRepo.UpdateSurveyRegionAssignmentCounts(surveyPeriodID); err != nil {
-		return nil, err
+	if requestedRegionFullCode != "" {
+		if err := s.surveyRepo.UpdateSurveyRegionAssignmentCountsByRegion(surveyPeriodID, requestedRegionFullCode); err != nil {
+			return nil, err
+		}
+	} else {
+		if err := s.surveyRepo.UpdateSurveyRegionAssignmentCounts(surveyPeriodID); err != nil {
+			return nil, err
+		}
 	}
 
 	log.Printf("[sync] completed in %s: total=%d savedAssignments=%d savedLogs=%d savedAnswers=%d skipped=%d", time.Since(startedAt).Round(time.Second), result.TotalAssignments, result.SavedAssignments, result.SavedLogs, result.SavedAnswers, skippedUnchanged)

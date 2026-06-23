@@ -3,6 +3,8 @@ package handlers
 import (
 	"fmt"
 	"io"
+	"log"
+	"net/http"
 	"strings"
 	"time"
 
@@ -352,7 +354,8 @@ func (h *SurveyHandler) AnalyzeSurvey(c fiber.Ctx) error {
 	for _, regionFullCode := range regionTargets {
 		info, err := tasks.EnqueueSurveyAnalyzeRegion(c.Context(), h.queue, surveyPeriodID, regionFullCode)
 		if err != nil {
-			return respondError(c, err)
+			log.Printf("[handler][analyze][error] enqueue region analyze failed surveyPeriodID=%s regionFullCode=%s err=%v", surveyPeriodID, regionFullCode, err)
+			return respondError(c, apperrors.NewHttpError(http.StatusServiceUnavailable, "failed to enqueue survey region analysis task"))
 		}
 
 		if info == nil {
@@ -393,7 +396,8 @@ func (h *SurveyHandler) AnalyzeSurveyByRegion(c fiber.Ctx) error {
 
 	info, err := tasks.EnqueueSurveyAnalyzeRegion(c.Context(), h.queue, surveyPeriodID, regionFullCode)
 	if err != nil {
-		return respondError(c, err)
+		log.Printf("[handler][analyze][error] enqueue analyze by region failed surveyPeriodID=%s regionFullCode=%s err=%v", surveyPeriodID, regionFullCode, err)
+		return respondError(c, apperrors.NewHttpError(http.StatusServiceUnavailable, "failed to enqueue survey region analysis task"))
 	}
 
 	if info == nil {

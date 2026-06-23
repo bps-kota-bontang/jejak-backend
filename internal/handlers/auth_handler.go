@@ -8,9 +8,13 @@ import (
 	"jejak/internal/dto"
 	apperrors "jejak/internal/errors"
 	"jejak/internal/services"
+	"net"
+	"net/url"
+	"strings"
 
 	"github.com/go-playground/validator/v10"
 	"github.com/gofiber/fiber/v3"
+	"golang.org/x/net/publicsuffix"
 )
 
 type AuthHandler struct {
@@ -29,6 +33,44 @@ func NewAuthHandler(appConfig *config.AppConfig, authConfig *config.AuthConfig, 
 	}
 }
 
+func (h *AuthHandler) resolveCookieDomain() string {
+	appURL := strings.TrimSpace(h.appConfig.URL)
+	if appURL == "" {
+		return ""
+	}
+
+	parsedURL, err := url.Parse(appURL)
+	if err != nil || parsedURL.Hostname() == "" {
+		parsedURL, err = url.Parse("https://" + appURL)
+		if err != nil {
+			return ""
+		}
+	}
+
+	hostname := strings.TrimSpace(parsedURL.Hostname())
+	if hostname == "" || strings.EqualFold(hostname, "localhost") || net.ParseIP(hostname) != nil {
+		return ""
+	}
+
+	// Use EffectiveTLDPlusOne to correctly handle multi-level suffixes like .co.id, .go.id, .org.uk
+	// e.g., "app.example.co.id" → "example.co.id", "api.example.com" → "example.com"
+	cookieDomain, err := publicsuffix.EffectiveTLDPlusOne(hostname)
+	if err != nil || cookieDomain == "" {
+		// Fallback for local/internal domains: use two-segment domain
+		parts := strings.Split(hostname, ".")
+		if len(parts) < 2 {
+			return ""
+		}
+		cookieDomain = strings.Join(parts[len(parts)-2:], ".")
+	}
+
+	if cookieDomain == "" {
+		return ""
+	}
+
+	return "." + cookieDomain
+}
+
 // setRefreshTokenCookie adalah helper function untuk set cookie refresh token
 func (h *AuthHandler) setRefreshTokenCookie(c fiber.Ctx, value string, maxAge int) {
 	isProd := h.appConfig.IsProduction()
@@ -44,7 +86,9 @@ func (h *AuthHandler) setRefreshTokenCookie(c fiber.Ctx, value string, maxAge in
 	}
 
 	if isProd {
-		cookie.Domain = ".databontang.com"
+		if cookieDomain := h.resolveCookieDomain(); cookieDomain != "" {
+			cookie.Domain = cookieDomain
+		}
 	}
 
 	c.Cookie(cookie)
@@ -65,7 +109,9 @@ func (h *AuthHandler) setStateCookie(c fiber.Ctx, value string, maxAge int) {
 	}
 
 	if isProd {
-		cookie.Domain = ".databontang.com"
+		if cookieDomain := h.resolveCookieDomain(); cookieDomain != "" {
+			cookie.Domain = cookieDomain
+		}
 	}
 
 	c.Cookie(cookie)

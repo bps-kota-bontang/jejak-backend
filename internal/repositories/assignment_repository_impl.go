@@ -20,6 +20,7 @@ func (r *AssignmentRepositoryImpl) Upsert(assignment *models.Assignment) error {
 		Columns: []clause.Column{{Name: "assignment_id"}},
 		DoUpdates: clause.AssignmentColumns([]string{
 			"survey_period_id",
+			"status",
 			"region_full_code",
 			"region_level1",
 			"region_level2",

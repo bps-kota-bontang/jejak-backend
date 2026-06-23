@@ -56,6 +56,7 @@ type AssignmentResponse struct {
 	ID             string               `json:"id"`
 	SurveyPeriodID string               `json:"survey_period_id"`
 	AssignmentID   string               `json:"assignment_id"`
+	Status         *int                 `json:"status,omitempty"`
 	RegionFullCode *string              `json:"region_full_code,omitempty"`
 	RegionLevel1   *string              `json:"region_level_1,omitempty"`
 	RegionLevel2   *string              `json:"region_level_2,omitempty"`
@@ -143,6 +144,11 @@ type SurveyRegionResponse struct {
 	SurveyPeriodID  string  `json:"survey_period_id"`
 	RegionGroupID   string  `json:"region_group_id"`
 	AssignmentCount int     `json:"assignment_count"`
+	DraftCount      int     `json:"draft_count"`
+	SubmittedCount  int     `json:"submitted_count"`
+	ApprovedCount   int     `json:"approved_count"`
+	RejectedCount   int     `json:"rejected_count"`
+	RevokedCount    int     `json:"revoked_count"`
 	Level1          *string `json:"level_1,omitempty"`
 	Level1Label     *string `json:"level_1_label,omitempty"`
 	Level2          *string `json:"level_2,omitempty"`
@@ -200,6 +206,7 @@ type RegionImportPayload struct {
 type ImportedAssignmentItem struct {
 	AssignmentID   string  `json:"assignment_id"`
 	SurveyPeriodID string  `json:"survey_period_id"`
+	Status         *int    `json:"status,omitempty"`
 	RegionFullCode string  `json:"region_full_code"`
 	RegionLevel1   string  `json:"region_level_1"`
 	RegionLevel2   string  `json:"region_level_2"`

@@ -12,6 +12,11 @@ type Region struct {
 	SurveyPeriodID  string  `gorm:"type:text;not null;index;uniqueIndex:idx_region_unique"`
 	RegionGroupID   string  `gorm:"type:text;not null;index"`
 	AssignmentCount int     `gorm:"type:int;not null;default:0"`
+	DraftCount      int     `gorm:"type:int;not null;default:0"`
+	SubmittedCount  int     `gorm:"type:int;not null;default:0"`
+	ApprovedCount   int     `gorm:"type:int;not null;default:0"`
+	RejectedCount   int     `gorm:"type:int;not null;default:0"`
+	RevokedCount    int     `gorm:"type:int;not null;default:0"`
 	Level1          *string `gorm:"type:text;index"`
 	Level1Label     *string `gorm:"type:text"`
 	Level2          *string `gorm:"type:text;index"`

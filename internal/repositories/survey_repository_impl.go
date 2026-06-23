@@ -96,15 +96,34 @@ func (r *SurveyRepositoryImpl) UpdateSurveyRegionAssignmentCounts(surveyPeriodID
 	return r.db.Transaction(func(tx *gorm.DB) error {
 		if err := tx.Model(&models.Region{}).
 			Where("survey_period_id = ?", surveyPeriodID).
-			Update("assignment_count", 0).Error; err != nil {
+			Updates(map[string]interface{}{
+				"assignment_count": 0,
+				"draft_count":      0,
+				"submitted_count":  0,
+				"approved_count":   0,
+				"rejected_count":   0,
+				"revoked_count":    0,
+			}).Error; err != nil {
 			return err
 		}
 
 		return tx.Exec(`
 			UPDATE regions AS r
-			SET assignment_count = counts.assignment_count
+			SET assignment_count = counts.assignment_count,
+				draft_count = counts.draft_count,
+				submitted_count = counts.submitted_count,
+				approved_count = counts.approved_count,
+				rejected_count = counts.rejected_count,
+				revoked_count = counts.revoked_count
 			FROM (
-				SELECT survey_period_id, region_full_code, COUNT(*) AS assignment_count
+				SELECT survey_period_id,
+				       region_full_code,
+				       COUNT(*) AS assignment_count,
+				       SUM(CASE WHEN status = ? THEN 1 ELSE 0 END) AS draft_count,
+				       SUM(CASE WHEN status = ? THEN 1 ELSE 0 END) AS submitted_count,
+				       SUM(CASE WHEN status = ? THEN 1 ELSE 0 END) AS approved_count,
+				       SUM(CASE WHEN status = ? THEN 1 ELSE 0 END) AS rejected_count,
+				       SUM(CASE WHEN status = ? THEN 1 ELSE 0 END) AS revoked_count
 				FROM assignments
 				WHERE survey_period_id = ?
 				  AND region_full_code IS NOT NULL
@@ -113,7 +132,14 @@ func (r *SurveyRepositoryImpl) UpdateSurveyRegionAssignmentCounts(surveyPeriodID
 			) AS counts
 			WHERE r.survey_period_id = counts.survey_period_id
 			  AND r.full_code = counts.region_full_code
-		`, surveyPeriodID).Error
+		`,
+			models.AssignmentStatusDraft,
+			models.AssignmentStatusSubmitted,
+			models.AssignmentStatusApproved,
+			models.AssignmentStatusRejected,
+			models.AssignmentStatusRevoked,
+			surveyPeriodID,
+		).Error
 	})
 }
 

@@ -717,6 +717,7 @@ func (s *SurveyService) ImportSurveyAssignments(ctx context.Context, surveyPerio
 		assignment := &models.Assignment{
 			SurveyPeriodID: surveyPeriodID,
 			AssignmentID:   assignmentID,
+			Status:         models.AssignmentStatusCodeFromInt(item.Status),
 			RegionFullCode: trimmedPtr(item.RegionFullCode),
 			RegionLevel1:   trimmedPtr(item.RegionLevel1),
 			RegionLevel2:   trimmedPtr(item.RegionLevel2),
@@ -1134,6 +1135,7 @@ func (s *SurveyService) SyncSurveyAssignments(ctx context.Context, surveyPeriodI
 				assignment := &models.Assignment{
 					SurveyPeriodID: survey.SurveyPeriodID,
 					AssignmentID:   row.ID,
+					Status:         models.AssignmentStatusCodeFromAlias(row.AssignmentStatusAlias),
 					RegionFullCode: regionFullCode,
 					RegionLevel1:   regionLevel1,
 					RegionLevel2:   regionLevel2,
@@ -1153,7 +1155,10 @@ func (s *SurveyService) SyncSurveyAssignments(ctx context.Context, surveyPeriodI
 				}
 				result.SavedAssignments++
 
-				if hasExistingAssignment && existingAssignment.RevisedAt.Equal(revisedAt) && existingAssignment.StartedAt.Valid {
+				statusUnchanged := (hasExistingAssignment && existingAssignment.Status == nil && assignment.Status == nil) ||
+					(hasExistingAssignment && existingAssignment.Status != nil && assignment.Status != nil && *existingAssignment.Status == *assignment.Status)
+
+				if hasExistingAssignment && existingAssignment.RevisedAt.Equal(revisedAt) && existingAssignment.StartedAt.Valid && statusUnchanged {
 					skippedUnchanged++
 					continue
 				}

@@ -15,6 +15,13 @@ type RegionLevelFilter struct {
 	Level5 string
 }
 
+type RegionContactUpdate struct {
+	FullCode string
+	PJ       *string
+	PML      *string
+	PPL      *string
+}
+
 type SurveyRepository interface {
 	Create(survey *models.Survey) error
 	Upsert(survey *models.Survey) error
@@ -25,6 +32,7 @@ type SurveyRepository interface {
 	UpdateRegionMetadata(surveyPeriodID string, groupID string, levelCount int) error
 	UpdateSurveyRegionAssignmentCounts(surveyPeriodID string) error
 	UpdateSurveyRegionAssignmentCountsByRegion(surveyPeriodID string, regionFullCode string) error
+	UpdateSurveyRegionContacts(surveyPeriodID string, contacts []RegionContactUpdate) (int, error)
 	ReplaceSurveyRegions(surveyPeriodID string, regions []models.Region) error
 	FindSurveyRegionsByLevel(surveyPeriodID string, level int, parentFullCode string) ([]models.Region, error)
 	FindBySurveyPeriodIDWithFilter(surveyPeriodID string, filter AssignmentRegionFilter) ([]models.Region, error)

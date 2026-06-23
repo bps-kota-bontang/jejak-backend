@@ -152,6 +152,9 @@ func ToSurveyRegionResponse(region *models.Region) *dto.SurveyRegionResponse {
 		Level5Label:     region.Level5Label,
 		Level6:          region.Level6,
 		Level6Label:     region.Level6Label,
+		PJ:              region.PJ,
+		PML:             region.PML,
+		PPL:             region.PPL,
 		FullCode:        region.FullCode,
 	}
 }

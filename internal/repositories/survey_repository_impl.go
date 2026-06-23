@@ -203,6 +203,44 @@ func (r *SurveyRepositoryImpl) UpdateSurveyRegionAssignmentCountsByRegion(survey
 		}).Error
 }
 
+func (r *SurveyRepositoryImpl) UpdateSurveyRegionContacts(surveyPeriodID string, contacts []RegionContactUpdate) (int, error) {
+	if len(contacts) == 0 {
+		return 0, nil
+	}
+
+	updatedRegions := 0
+	err := r.db.Transaction(func(tx *gorm.DB) error {
+		for _, contact := range contacts {
+			fullCode := strings.TrimSpace(contact.FullCode)
+			if fullCode == "" {
+				continue
+			}
+
+			result := tx.Model(&models.Region{}).
+				Where("survey_period_id = ? AND full_code = ?", surveyPeriodID, fullCode).
+				Updates(map[string]interface{}{
+					"pj":         contact.PJ,
+					"pml":        contact.PML,
+					"ppl":        contact.PPL,
+					"updated_at": gorm.Expr("NOW()"),
+				})
+			if result.Error != nil {
+				return result.Error
+			}
+			if result.RowsAffected > 0 {
+				updatedRegions++
+			}
+		}
+
+		return nil
+	})
+	if err != nil {
+		return 0, err
+	}
+
+	return updatedRegions, nil
+}
+
 func (r *SurveyRepositoryImpl) ReplaceSurveyRegions(surveyPeriodID string, regions []models.Region) error {
 	return r.db.Transaction(func(tx *gorm.DB) error {
 		if err := tx.Where("survey_period_id = ?", surveyPeriodID).Delete(&models.Region{}).Error; err != nil {
@@ -352,6 +390,15 @@ func (r *SurveyRepositoryImpl) buildRegionFilterQuery(surveyPeriodID string, fil
 	}
 	if strings.TrimSpace(filter.RegionLevel6) != "" {
 		query = query.Where("level6 = ?", strings.TrimSpace(filter.RegionLevel6))
+	}
+	if strings.TrimSpace(filter.PJ) != "" {
+		query = query.Where("pj ILIKE ?", "%"+strings.TrimSpace(filter.PJ)+"%")
+	}
+	if strings.TrimSpace(filter.PML) != "" {
+		query = query.Where("pml ILIKE ?", "%"+strings.TrimSpace(filter.PML)+"%")
+	}
+	if strings.TrimSpace(filter.PPL) != "" {
+		query = query.Where("ppl ILIKE ?", "%"+strings.TrimSpace(filter.PPL)+"%")
 	}
 
 	assignment := strings.TrimSpace(filter.Assignment)

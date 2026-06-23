@@ -95,6 +95,9 @@ type AssignmentRegionFilterQuery struct {
 	RegionLevel4   string `json:"region_level_4,omitempty"`
 	RegionLevel5   string `json:"region_level_5,omitempty"`
 	RegionLevel6   string `json:"region_level_6,omitempty"`
+	PJ             string `json:"pj,omitempty"`
+	PML            string `json:"pml,omitempty"`
+	PPL            string `json:"ppl,omitempty"`
 	Assignment     string `json:"assignment_filter,omitempty"`
 	Status         string `json:"status_filter,omitempty"`
 	Page           int    `json:"page,omitempty"`
@@ -162,6 +165,9 @@ type SurveyRegionResponse struct {
 	Level5Label     *string `json:"level_5_label,omitempty"`
 	Level6          *string `json:"level_6,omitempty"`
 	Level6Label     *string `json:"level_6_label,omitempty"`
+	PJ              *string `json:"pj,omitempty"`
+	PML             *string `json:"pml,omitempty"`
+	PPL             *string `json:"ppl,omitempty"`
 	FullCode        string  `json:"full_code"`
 }
 
@@ -174,6 +180,12 @@ type SyncSurveyRegionsResponse struct {
 	RegionGroupID string `json:"region_group_id"`
 	LevelCount    int    `json:"level_count"`
 	SavedRegions  int    `json:"saved_regions"`
+}
+
+type ImportSurveyRegionContactsResponse struct {
+	TotalRows      int `json:"total_rows"`
+	UpdatedRegions int `json:"updated_regions"`
+	SkippedRows    int `json:"skipped_rows"`
 }
 
 type ImportedRegionItem struct {

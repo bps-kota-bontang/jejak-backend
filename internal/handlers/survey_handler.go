@@ -192,6 +192,52 @@ func (h *SurveyHandler) ImportSurveyRegions(c fiber.Ctx) error {
 	return respondOK(c, result, "Survey regions imported successfully")
 }
 
+func (h *SurveyHandler) ImportSurveyRegionContacts(c fiber.Ctx) error {
+	surveyPeriodID := c.Params("surveyPeriodId")
+	if surveyPeriodID == "" {
+		return respondError(c, apperrors.NewHttpError(fiber.StatusBadRequest, "surveyPeriodId is required"))
+	}
+
+	fileHeader, err := c.FormFile("file")
+	if err != nil {
+		return respondError(c, apperrors.NewHttpError(fiber.StatusBadRequest, "file is required"))
+	}
+
+	src, err := fileHeader.Open()
+	if err != nil {
+		return respondError(c, err)
+	}
+	defer src.Close()
+
+	raw, err := io.ReadAll(src)
+	if err != nil {
+		return respondError(c, err)
+	}
+
+	result, err := h.service.ImportSurveyRegionContacts(c.Context(), surveyPeriodID, raw)
+	if err != nil {
+		return respondError(c, err)
+	}
+
+	return respondOK(c, result, "Survey region contacts imported successfully")
+}
+
+func (h *SurveyHandler) DownloadSurveyRegionContactsTemplate(c fiber.Ctx) error {
+	surveyPeriodID := c.Params("surveyPeriodId")
+	if surveyPeriodID == "" {
+		return respondError(c, apperrors.NewHttpError(fiber.StatusBadRequest, "surveyPeriodId is required"))
+	}
+
+	filename, content, err := h.service.GenerateSurveyRegionContactsTemplate(c.Context(), surveyPeriodID)
+	if err != nil {
+		return respondError(c, err)
+	}
+
+	c.Set("Content-Type", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+	c.Set("Content-Disposition", fmt.Sprintf("attachment; filename=%q", filename))
+	return c.Send(content)
+}
+
 func (h *SurveyHandler) ImportSurveyAssignments(c fiber.Ctx) error {
 	surveyPeriodID := c.Params("surveyPeriodId")
 	if surveyPeriodID == "" {
@@ -479,6 +525,9 @@ func (h *SurveyHandler) GetRegions(c fiber.Ctx) error {
 		RegionLevel4:   c.Query("region_level_4"),
 		RegionLevel5:   c.Query("region_level_5"),
 		RegionLevel6:   c.Query("region_level_6"),
+		PJ:             c.Query("pj"),
+		PML:            c.Query("pml"),
+		PPL:            c.Query("ppl"),
 		Assignment:     c.Query("assignment_filter"),
 		Status:         c.Query("status_filter"),
 		Page:           fiber.Query[int](c, "page", 1),

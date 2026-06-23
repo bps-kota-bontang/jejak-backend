@@ -29,6 +29,9 @@ type Region struct {
 	Level5Label     *string `gorm:"type:text"`
 	Level6          *string `gorm:"type:text;index"`
 	Level6Label     *string `gorm:"type:text"`
+	PJ              *string `gorm:"type:text"`
+	PML             *string `gorm:"type:text"`
+	PPL             *string `gorm:"type:text"`
 	FullCode        string  `gorm:"type:text;not null;index;uniqueIndex:idx_region_unique"`
 	CreatedAt       time.Time
 	UpdatedAt       time.Time

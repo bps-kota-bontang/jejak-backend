@@ -10,6 +10,9 @@ type AssignmentRegionFilter struct {
 	RegionLevel4   string
 	RegionLevel5   string
 	RegionLevel6   string
+	PJ             string
+	PML            string
+	PPL            string
 	Assignment     string
 	Status         string
 }

@@ -18,6 +18,7 @@ import (
 	"jejak/internal/models"
 	"jejak/internal/repositories"
 
+	"github.com/xuri/excelize/v2"
 	"gorm.io/gorm"
 )
 
@@ -368,6 +369,9 @@ func (s *SurveyService) GetRegionsBySurveyPeriodID(surveyPeriodID string, query 
 		RegionLevel4:   query.RegionLevel4,
 		RegionLevel5:   query.RegionLevel5,
 		RegionLevel6:   query.RegionLevel6,
+		PJ:             query.PJ,
+		PML:            query.PML,
+		PPL:            query.PPL,
 		Assignment:     query.Assignment,
 		Status:         query.Status,
 	}
@@ -494,6 +498,186 @@ func (s *SurveyService) GetRegionFilterOptionsWithFilters(surveyPeriodID string,
 	}
 
 	return response, nil
+}
+
+func (s *SurveyService) ImportSurveyRegionContacts(ctx context.Context, surveyPeriodID string, raw []byte) (*dto.ImportSurveyRegionContactsResponse, error) {
+	_ = ctx
+
+	if len(bytes.TrimSpace(raw)) == 0 {
+		return nil, apperrors.NewHttpError(http.StatusBadRequest, "file import kontak region kosong")
+	}
+
+	if _, err := s.surveyRepo.FindBySurveyPeriodID(surveyPeriodID); err != nil {
+		if err == gorm.ErrRecordNotFound {
+			return nil, apperrors.NewHttpError(http.StatusNotFound, "survey tidak ditemukan")
+		}
+		return nil, err
+	}
+
+	file, err := excelize.OpenReader(bytes.NewReader(raw))
+	if err != nil {
+		return nil, apperrors.NewHttpError(http.StatusBadRequest, "format file excel tidak valid")
+	}
+	defer func() { _ = file.Close() }()
+
+	sheetName := file.GetSheetName(file.GetActiveSheetIndex())
+	if strings.TrimSpace(sheetName) == "" {
+		sheets := file.GetSheetList()
+		if len(sheets) == 0 {
+			return nil, apperrors.NewHttpError(http.StatusBadRequest, "sheet excel tidak ditemukan")
+		}
+		sheetName = sheets[0]
+	}
+
+	rows, err := file.GetRows(sheetName)
+	if err != nil {
+		return nil, apperrors.NewHttpError(http.StatusBadRequest, "gagal membaca sheet excel")
+	}
+	if len(rows) < 2 {
+		return nil, apperrors.NewHttpError(http.StatusBadRequest, "file excel minimal harus memiliki header dan satu baris data")
+	}
+
+	headerIndex := make(map[string]int)
+	for index, cell := range rows[0] {
+		headerIndex[strings.ToLower(strings.TrimSpace(cell))] = index
+	}
+	for _, required := range []string{"full_code", "pj", "pml", "ppl"} {
+		if _, ok := headerIndex[required]; !ok {
+			return nil, apperrors.NewHttpError(http.StatusBadRequest, fmt.Sprintf("kolom %s wajib ada pada template excel", required))
+		}
+	}
+
+	contactMap := make(map[string]repositories.RegionContactUpdate)
+	totalRows := 0
+	skippedRows := 0
+	for _, row := range rows[1:] {
+		if isExcelRowEmpty(row) {
+			continue
+		}
+		totalRows++
+
+		fullCode := getExcelRowValue(row, headerIndex["full_code"])
+		if fullCode == "" {
+			skippedRows++
+			continue
+		}
+
+		contactMap[fullCode] = repositories.RegionContactUpdate{
+			FullCode: fullCode,
+			PJ:       trimmedPtr(getExcelRowValue(row, headerIndex["pj"])),
+			PML:      trimmedPtr(getExcelRowValue(row, headerIndex["pml"])),
+			PPL:      trimmedPtr(getExcelRowValue(row, headerIndex["ppl"])),
+		}
+	}
+
+	contacts := make([]repositories.RegionContactUpdate, 0, len(contactMap))
+	for _, item := range contactMap {
+		contacts = append(contacts, item)
+	}
+	sort.Slice(contacts, func(i, j int) bool {
+		return contacts[i].FullCode < contacts[j].FullCode
+	})
+
+	if len(contacts) == 0 {
+		return nil, apperrors.NewHttpError(http.StatusBadRequest, "tidak ada data kontak region valid di file excel")
+	}
+
+	updatedRegions, err := s.surveyRepo.UpdateSurveyRegionContacts(surveyPeriodID, contacts)
+	if err != nil {
+		return nil, err
+	}
+
+	return &dto.ImportSurveyRegionContactsResponse{
+		TotalRows:      totalRows,
+		UpdatedRegions: updatedRegions,
+		SkippedRows:    skippedRows,
+	}, nil
+}
+
+func (s *SurveyService) GenerateSurveyRegionContactsTemplate(ctx context.Context, surveyPeriodID string) (string, []byte, error) {
+	_ = ctx
+
+	if _, err := s.surveyRepo.FindBySurveyPeriodID(surveyPeriodID); err != nil {
+		if err == gorm.ErrRecordNotFound {
+			return "", nil, apperrors.NewHttpError(http.StatusNotFound, "survey tidak ditemukan")
+		}
+		return "", nil, err
+	}
+
+	regions, err := s.surveyRepo.FindBySurveyPeriodIDWithFilter(surveyPeriodID, repositories.AssignmentRegionFilter{})
+	if err != nil {
+		return "", nil, err
+	}
+
+	file := excelize.NewFile()
+	defer func() { _ = file.Close() }()
+
+	sheetName := "contacts"
+	defaultSheet := file.GetSheetName(file.GetActiveSheetIndex())
+	file.SetSheetName(defaultSheet, sheetName)
+
+	headers := []string{"full_code", "pj", "pml", "ppl"}
+	for index, header := range headers {
+		cell, _ := excelize.CoordinatesToCellName(index+1, 1)
+		if err := file.SetCellValue(sheetName, cell, header); err != nil {
+			return "", nil, err
+		}
+	}
+
+	sort.Slice(regions, func(i, j int) bool {
+		return strings.TrimSpace(regions[i].FullCode) < strings.TrimSpace(regions[j].FullCode)
+	})
+
+	for index, region := range regions {
+		rowNumber := index + 2
+		values := []string{
+			strings.TrimSpace(region.FullCode),
+			stringValue(region.PJ),
+			stringValue(region.PML),
+			stringValue(region.PPL),
+		}
+		for columnIndex, value := range values {
+			cell, _ := excelize.CoordinatesToCellName(columnIndex+1, rowNumber)
+			if err := file.SetCellValue(sheetName, cell, value); err != nil {
+				return "", nil, err
+			}
+		}
+	}
+
+	if err := file.SetColWidth(sheetName, "A", "D", 24); err != nil {
+		return "", nil, err
+	}
+
+	buffer, err := file.WriteToBuffer()
+	if err != nil {
+		return "", nil, err
+	}
+
+	filename := fmt.Sprintf("survey-region-contacts-%s.xlsx", surveyPeriodID)
+	return filename, buffer.Bytes(), nil
+}
+
+func stringValue(value *string) string {
+	if value == nil {
+		return ""
+	}
+	return strings.TrimSpace(*value)
+}
+
+func getExcelRowValue(row []string, index int) string {
+	if index < 0 || index >= len(row) {
+		return ""
+	}
+	return strings.TrimSpace(row[index])
+}
+
+func isExcelRowEmpty(row []string) bool {
+	for _, cell := range row {
+		if strings.TrimSpace(cell) != "" {
+			return false
+		}
+	}
+	return true
 }
 
 func (s *SurveyService) ImportSurveyRegions(ctx context.Context, surveyPeriodID string, raw []byte) (*dto.SyncSurveyRegionsResponse, error) {

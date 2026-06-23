@@ -1155,10 +1155,7 @@ func (s *SurveyService) SyncSurveyAssignments(ctx context.Context, surveyPeriodI
 				}
 				result.SavedAssignments++
 
-				statusUnchanged := (hasExistingAssignment && existingAssignment.Status == nil && assignment.Status == nil) ||
-					(hasExistingAssignment && existingAssignment.Status != nil && assignment.Status != nil && *existingAssignment.Status == *assignment.Status)
-
-				if hasExistingAssignment && existingAssignment.RevisedAt.Equal(revisedAt) && existingAssignment.StartedAt.Valid && statusUnchanged {
+				if hasExistingAssignment && existingAssignment.RevisedAt.Equal(revisedAt) && existingAssignment.StartedAt.Valid {
 					skippedUnchanged++
 					continue
 				}

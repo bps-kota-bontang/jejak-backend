@@ -302,7 +302,65 @@ func (r *SurveyRepositoryImpl) buildRegionFilterQuery(surveyPeriodID string, fil
 		query = query.Where("assignment_count = 0")
 	}
 
+	status := strings.ToLower(strings.TrimSpace(filter.Status))
+	statusFilters := parseStatusFilters(status)
+	if len(statusFilters) > 0 {
+		conditions := make([]string, 0, len(statusFilters))
+		for _, item := range statusFilters {
+			switch item {
+			case "draft":
+				conditions = append(conditions, "draft_count > 0")
+			case "submitted":
+				conditions = append(conditions, "submitted_count > 0")
+			case "approved":
+				conditions = append(conditions, "approved_count > 0")
+			case "rejected":
+				conditions = append(conditions, "rejected_count > 0")
+			case "revoked":
+				conditions = append(conditions, "revoked_count > 0")
+			}
+		}
+
+		if len(conditions) > 0 {
+			query = query.Where("(" + strings.Join(conditions, " OR ") + ")")
+		}
+	}
+
 	return query
+}
+
+func parseStatusFilters(raw string) []string {
+	if raw == "" {
+		return nil
+	}
+
+	allowed := map[string]struct{}{
+		"draft":     {},
+		"submitted": {},
+		"approved":  {},
+		"rejected":  {},
+		"revoked":   {},
+	}
+
+	seen := make(map[string]struct{})
+	result := make([]string, 0, 5)
+	for _, token := range strings.Split(raw, ",") {
+		item := strings.ToLower(strings.TrimSpace(token))
+		if item == "" {
+			continue
+		}
+		if _, ok := allowed[item]; !ok {
+			continue
+		}
+		if _, exists := seen[item]; exists {
+			continue
+		}
+
+		seen[item] = struct{}{}
+		result = append(result, item)
+	}
+
+	return result
 }
 
 func (r *SurveyRepositoryImpl) getDistinctRegionLevel(surveyPeriodID string, valueCol string, labelCol string, filter RegionLevelFilter) ([]RegionLevelOption, error) {

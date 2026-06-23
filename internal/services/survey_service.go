@@ -369,6 +369,7 @@ func (s *SurveyService) GetRegionsBySurveyPeriodID(surveyPeriodID string, query 
 		RegionLevel5:   query.RegionLevel5,
 		RegionLevel6:   query.RegionLevel6,
 		Assignment:     query.Assignment,
+		Status:         query.Status,
 	}
 
 	total, err := s.surveyRepo.CountBySurveyPeriodIDWithFilter(surveyPeriodID, filter)

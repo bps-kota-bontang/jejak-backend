@@ -11,6 +11,7 @@ type AssignmentRegionFilter struct {
 	RegionLevel5   string
 	RegionLevel6   string
 	Assignment     string
+	Status         string
 }
 
 type AssignmentRepository interface {

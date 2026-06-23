@@ -96,6 +96,7 @@ type AssignmentRegionFilterQuery struct {
 	RegionLevel5   string `json:"region_level_5,omitempty"`
 	RegionLevel6   string `json:"region_level_6,omitempty"`
 	Assignment     string `json:"assignment_filter,omitempty"`
+	Status         string `json:"status_filter,omitempty"`
 	Page           int    `json:"page,omitempty"`
 	PerPage        int    `json:"per_page,omitempty"`
 }

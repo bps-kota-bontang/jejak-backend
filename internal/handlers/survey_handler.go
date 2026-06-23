@@ -480,6 +480,7 @@ func (h *SurveyHandler) GetRegions(c fiber.Ctx) error {
 		RegionLevel5:   c.Query("region_level_5"),
 		RegionLevel6:   c.Query("region_level_6"),
 		Assignment:     c.Query("assignment_filter"),
+		Status:         c.Query("status_filter"),
 		Page:           fiber.Query[int](c, "page", 1),
 		PerPage:        fiber.Query[int](c, "per_page", 10),
 	}

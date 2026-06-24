@@ -411,6 +411,10 @@ func mapRegionSortColumn(raw string) string {
 		return "assignment_count"
 	case "usaha":
 		return "usaha"
+	case "open":
+		return "open_count"
+	case "progress":
+		return "CASE WHEN assignment_count > 0 THEN (draft_count + submitted_count + approved_count + rejected_count + revoked_count)::float / assignment_count ELSE 0 END"
 	default:
 		return ""
 	}

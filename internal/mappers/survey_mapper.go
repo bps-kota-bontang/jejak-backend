@@ -130,6 +130,12 @@ func toTimePtr(value sql.NullTime) *time.Time {
 }
 
 func ToSurveyRegionResponse(region *models.Region) *dto.SurveyRegionResponse {
+	var progress float64
+	if region.AssignmentCount > 0 {
+		done := region.DraftCount + region.SubmittedCount + region.ApprovedCount + region.RejectedCount + region.RevokedCount
+		progress = float64(done) / float64(region.AssignmentCount) * 100
+	}
+
 	return &dto.SurveyRegionResponse{
 		ID:              region.ID,
 		SurveyID:        region.SurveyID,
@@ -143,6 +149,7 @@ func ToSurveyRegionResponse(region *models.Region) *dto.SurveyRegionResponse {
 		ApprovedCount:   region.ApprovedCount,
 		RejectedCount:   region.RejectedCount,
 		RevokedCount:    region.RevokedCount,
+		Progress:        progress,
 		Level1:          region.Level1,
 		Level1Label:     region.Level1Label,
 		Level2:          region.Level2,

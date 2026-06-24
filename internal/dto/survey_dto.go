@@ -158,6 +158,7 @@ type SurveyRegionResponse struct {
 	ApprovedCount   int     `json:"approved_count"`
 	RejectedCount   int     `json:"rejected_count"`
 	RevokedCount    int     `json:"revoked_count"`
+	Progress        float64 `json:"progress"`
 	Level1          *string `json:"level_1,omitempty"`
 	Level1Label     *string `json:"level_1_label,omitempty"`
 	Level2          *string `json:"level_2,omitempty"`

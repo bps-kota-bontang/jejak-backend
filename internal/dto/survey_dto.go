@@ -101,6 +101,8 @@ type AssignmentRegionFilterQuery struct {
 	PPL            string `json:"ppl,omitempty"`
 	Assignment     string `json:"assignment_filter,omitempty"`
 	Status         string `json:"status_filter,omitempty"`
+	SortBy         string `json:"sort_by,omitempty"`
+	SortDir        string `json:"sort_dir,omitempty"`
 	Page           int    `json:"page,omitempty"`
 	PerPage        int    `json:"per_page,omitempty"`
 }

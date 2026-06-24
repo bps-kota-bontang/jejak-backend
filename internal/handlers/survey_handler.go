@@ -530,6 +530,8 @@ func (h *SurveyHandler) GetRegions(c fiber.Ctx) error {
 		PPL:            c.Query("ppl"),
 		Assignment:     c.Query("assignment_filter"),
 		Status:         c.Query("status_filter"),
+		SortBy:         c.Query("sort_by"),
+		SortDir:        c.Query("sort_dir"),
 		Page:           fiber.Query[int](c, "page", 1),
 		PerPage:        fiber.Query[int](c, "per_page", 10),
 	}

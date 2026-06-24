@@ -15,6 +15,8 @@ type AssignmentRegionFilter struct {
 	PPL            string
 	Assignment     string
 	Status         string
+	SortBy         string
+	SortDir        string
 }
 
 type AssignmentRepository interface {

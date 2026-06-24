@@ -341,9 +341,10 @@ func (r *SurveyRepositoryImpl) FindSurveyRegionsByLevel(surveyPeriodID string, l
 
 func (r *SurveyRepositoryImpl) FindBySurveyPeriodIDWithFilter(surveyPeriodID string, filter AssignmentRegionFilter) ([]models.Region, error) {
 	query := r.buildRegionFilterQuery(surveyPeriodID, filter)
+	query = applyRegionSort(query, filter)
 
 	var regions []models.Region
-	if err := query.Order("full_code ASC").Find(&regions).Error; err != nil {
+	if err := query.Find(&regions).Error; err != nil {
 		return nil, err
 	}
 
@@ -352,6 +353,7 @@ func (r *SurveyRepositoryImpl) FindBySurveyPeriodIDWithFilter(surveyPeriodID str
 
 func (r *SurveyRepositoryImpl) FindBySurveyPeriodIDWithFilterPaginated(surveyPeriodID string, filter AssignmentRegionFilter, limit int, offset int) ([]models.Region, error) {
 	query := r.buildRegionFilterQuery(surveyPeriodID, filter)
+	query = applyRegionSort(query, filter)
 
 	if limit > 0 {
 		query = query.Limit(limit)
@@ -361,11 +363,46 @@ func (r *SurveyRepositoryImpl) FindBySurveyPeriodIDWithFilterPaginated(surveyPer
 	}
 
 	var regions []models.Region
-	if err := query.Order("full_code ASC").Find(&regions).Error; err != nil {
+	if err := query.Find(&regions).Error; err != nil {
 		return nil, err
 	}
 
 	return regions, nil
+}
+
+func applyRegionSort(query *gorm.DB, filter AssignmentRegionFilter) *gorm.DB {
+	sortColumn := mapRegionSortColumn(filter.SortBy)
+	if sortColumn == "" {
+		return query.Order("full_code ASC")
+	}
+
+	sortDir := "DESC"
+	if strings.EqualFold(strings.TrimSpace(filter.SortDir), "asc") {
+		sortDir = "ASC"
+	}
+
+	return query.Order(sortColumn + " " + sortDir).Order("full_code ASC")
+}
+
+func mapRegionSortColumn(raw string) string {
+	switch strings.ToLower(strings.TrimSpace(raw)) {
+	case "draft":
+		return "draft_count"
+	case "submitted":
+		return "submitted_count"
+	case "approved":
+		return "approved_count"
+	case "rejected":
+		return "rejected_count"
+	case "revoked":
+		return "revoked_count"
+	case "total":
+		return "assignment_count"
+	case "usaha":
+		return "usaha"
+	default:
+		return ""
+	}
 }
 
 func (r *SurveyRepositoryImpl) CountBySurveyPeriodIDWithFilter(surveyPeriodID string, filter AssignmentRegionFilter) (int64, error) {

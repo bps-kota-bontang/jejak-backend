@@ -99,6 +99,7 @@ func (r *SurveyRepositoryImpl) UpdateSurveyRegionAssignmentCounts(surveyPeriodID
 			Updates(map[string]interface{}{
 				"assignment_count": 0,
 				"usaha":            0,
+				"open_count":       0,
 				"draft_count":      0,
 				"submitted_count":  0,
 				"approved_count":   0,
@@ -212,6 +213,16 @@ func (r *SurveyRepositoryImpl) UpdateSurveyRegionAssignmentCountsByRegion(survey
 				), 0)
 			`, models.AssignmentStatusRevoked),
 		}).Error
+}
+
+func (r *SurveyRepositoryImpl) UpdateRegionOpenCount(surveyPeriodID string, regionFullCode string, count int) error {
+	trimmed := strings.TrimSpace(regionFullCode)
+	if trimmed == "" {
+		return nil
+	}
+	return r.db.Model(&models.Region{}).
+		Where("survey_period_id = ? AND full_code = ?", surveyPeriodID, trimmed).
+		Update("open_count", count).Error
 }
 
 func (r *SurveyRepositoryImpl) UpdateSurveyRegionContacts(surveyPeriodID string, contacts []RegionContactUpdate) (int, error) {

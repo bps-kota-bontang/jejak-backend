@@ -152,6 +152,7 @@ type SurveyRegionResponse struct {
 	RegionGroupID   string  `json:"region_group_id"`
 	AssignmentCount int     `json:"assignment_count"`
 	Usaha           int     `json:"usaha"`
+	OpenCount       int     `json:"open_count"`
 	DraftCount      int     `json:"draft_count"`
 	SubmittedCount  int     `json:"submitted_count"`
 	ApprovedCount   int     `json:"approved_count"`

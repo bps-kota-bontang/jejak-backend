@@ -1474,6 +1474,30 @@ func (s *SurveyService) SyncSurveyAssignments(ctx context.Context, surveyPeriodI
 		}
 	}
 
+	openDatatableReq := dto.FasihDatatableRequest{
+		Start:  0,
+		Length: 0,
+		AssignmentExtraParam: dto.FasihAssignmentExtraParam{
+			SurveyPeriodID:        regionFilterParam.SurveyPeriodID,
+			AssignmentStatusAlias: "OPEN",
+			Region1ID:             regionFilterParam.Region1ID,
+			Region2ID:             regionFilterParam.Region2ID,
+			Region3ID:             regionFilterParam.Region3ID,
+			Region4ID:             regionFilterParam.Region4ID,
+			Region5ID:             regionFilterParam.Region5ID,
+			Region6ID:             regionFilterParam.Region6ID,
+		},
+	}
+	openResp, err := s.fasihService.GetAssignmentDatatable(ctx, creds, openDatatableReq)
+	if err != nil {
+		log.Printf("[sync] failed to fetch open count for region=%s: %v", requestedRegionFullCode, err)
+	} else {
+		log.Printf("[sync] open count for region=%s: %d", requestedRegionFullCode, openResp.TotalHit)
+		if err := s.surveyRepo.UpdateRegionOpenCount(surveyPeriodID, requestedRegionFullCode, openResp.TotalHit); err != nil {
+			log.Printf("[sync] failed to update open count for region=%s: %v", requestedRegionFullCode, err)
+		}
+	}
+
 	log.Printf("[sync] completed in %s: total=%d savedAssignments=%d savedLogs=%d savedAnswers=%d skipped=%d", time.Since(startedAt).Round(time.Second), result.TotalAssignments, result.SavedAssignments, result.SavedLogs, result.SavedAnswers, skippedUnchanged)
 
 	return result, nil

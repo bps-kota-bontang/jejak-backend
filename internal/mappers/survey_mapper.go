@@ -137,6 +137,7 @@ func ToSurveyRegionResponse(region *models.Region) *dto.SurveyRegionResponse {
 		RegionGroupID:   region.RegionGroupID,
 		AssignmentCount: region.AssignmentCount,
 		Usaha:           region.Usaha,
+		OpenCount:       region.OpenCount,
 		DraftCount:      region.DraftCount,
 		SubmittedCount:  region.SubmittedCount,
 		ApprovedCount:   region.ApprovedCount,

@@ -13,6 +13,7 @@ type Region struct {
 	RegionGroupID   string  `gorm:"type:text;not null;index"`
 	AssignmentCount int     `gorm:"type:int;not null;default:0"`
 	Usaha           int     `gorm:"type:int;not null;default:0"`
+	OpenCount       int     `gorm:"type:int;not null;default:0"`
 	DraftCount      int     `gorm:"type:int;not null;default:0"`
 	SubmittedCount  int     `gorm:"type:int;not null;default:0"`
 	ApprovedCount   int     `gorm:"type:int;not null;default:0"`

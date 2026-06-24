@@ -32,6 +32,7 @@ type SurveyRepository interface {
 	UpdateRegionMetadata(surveyPeriodID string, groupID string, levelCount int) error
 	UpdateSurveyRegionAssignmentCounts(surveyPeriodID string) error
 	UpdateSurveyRegionAssignmentCountsByRegion(surveyPeriodID string, regionFullCode string) error
+	UpdateRegionOpenCount(surveyPeriodID string, regionFullCode string, count int) error
 	UpdateSurveyRegionContacts(surveyPeriodID string, contacts []RegionContactUpdate) (int, error)
 	ReplaceSurveyRegions(surveyPeriodID string, regions []models.Region) error
 	FindSurveyRegionsByLevel(surveyPeriodID string, level int, parentFullCode string) ([]models.Region, error)

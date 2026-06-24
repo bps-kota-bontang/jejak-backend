@@ -1464,16 +1464,6 @@ func (s *SurveyService) SyncSurveyAssignments(ctx context.Context, surveyPeriodI
 
 	result.TotalAssignments = matchedAssignments
 
-	if requestedRegionFullCode != "" {
-		if err := s.surveyRepo.UpdateSurveyRegionAssignmentCountsByRegion(surveyPeriodID, requestedRegionFullCode); err != nil {
-			return nil, err
-		}
-	} else {
-		if err := s.surveyRepo.UpdateSurveyRegionAssignmentCounts(surveyPeriodID); err != nil {
-			return nil, err
-		}
-	}
-
 	openDatatableReq := dto.FasihDatatableRequest{
 		Start:  0,
 		Length: 0,
@@ -1495,6 +1485,16 @@ func (s *SurveyService) SyncSurveyAssignments(ctx context.Context, surveyPeriodI
 		log.Printf("[sync] open count for region=%s: %d", requestedRegionFullCode, openResp.TotalHit)
 		if err := s.surveyRepo.UpdateRegionOpenCount(surveyPeriodID, requestedRegionFullCode, openResp.TotalHit); err != nil {
 			log.Printf("[sync] failed to update open count for region=%s: %v", requestedRegionFullCode, err)
+		}
+	}
+
+	if requestedRegionFullCode != "" {
+		if err := s.surveyRepo.UpdateSurveyRegionAssignmentCountsByRegion(surveyPeriodID, requestedRegionFullCode); err != nil {
+			return nil, err
+		}
+	} else {
+		if err := s.surveyRepo.UpdateSurveyRegionAssignmentCounts(surveyPeriodID); err != nil {
+			return nil, err
 		}
 	}
 

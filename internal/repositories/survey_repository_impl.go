@@ -111,7 +111,7 @@ func (r *SurveyRepositoryImpl) UpdateSurveyRegionAssignmentCounts(surveyPeriodID
 
 		return tx.Exec(`
 			UPDATE regions AS r
-			SET assignment_count = counts.assignment_count,
+			SET assignment_count = counts.assignment_count + COALESCE(r.open_count, 0),
 				usaha = counts.usaha,
 				draft_count = counts.draft_count,
 				submitted_count = counts.submitted_count,
@@ -162,7 +162,7 @@ func (r *SurveyRepositoryImpl) UpdateSurveyRegionAssignmentCountsByRegion(survey
 					FROM assignments a
 					WHERE a.survey_period_id = regions.survey_period_id
 					  AND a.region_full_code = regions.full_code
-				), 0)
+				), 0) + COALESCE(open_count, 0)
 			`),
 			"usaha": gorm.Expr(`
 				COALESCE((
@@ -222,7 +222,10 @@ func (r *SurveyRepositoryImpl) UpdateRegionOpenCount(surveyPeriodID string, regi
 	}
 	return r.db.Model(&models.Region{}).
 		Where("survey_period_id = ? AND full_code = ?", surveyPeriodID, trimmed).
-		Update("open_count", count).Error
+		Updates(map[string]interface{}{
+			"open_count":       count,
+			"assignment_count": gorm.Expr("COALESCE(draft_count, 0) + COALESCE(submitted_count, 0) + COALESCE(approved_count, 0) + COALESCE(rejected_count, 0) + COALESCE(revoked_count, 0) + ?", count),
+		}).Error
 }
 
 func (r *SurveyRepositoryImpl) UpdateSurveyRegionContacts(surveyPeriodID string, contacts []RegionContactUpdate) (int, error) {

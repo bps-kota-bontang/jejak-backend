@@ -470,10 +470,10 @@ func (r *SurveyRepositoryImpl) buildRegionFilterQuery(surveyPeriodID string, fil
 
 	assignment := strings.TrimSpace(filter.Assignment)
 	if assignment == "has" {
-		query = query.Where("assignment_count > 0")
+		query = query.Where("draft_count + submitted_count + approved_count + rejected_count + revoked_count > 0")
 	}
 	if assignment == "none" {
-		query = query.Where("assignment_count = 0")
+		query = query.Where("draft_count + submitted_count + approved_count + rejected_count + revoked_count = 0")
 	}
 
 	status := strings.ToLower(strings.TrimSpace(filter.Status))

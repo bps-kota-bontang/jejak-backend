@@ -66,6 +66,7 @@ type AssignmentResponse struct {
 	RegionLevel6   *string              `json:"region_level_6,omitempty"`
 	Latitude       float64              `json:"latitude"`
 	Longitude      float64              `json:"longitude"`
+	Usaha          int                  `json:"usaha"`
 	OpenedAt       *time.Time           `json:"opened_at,omitempty"`
 	StartedAt      *time.Time           `json:"started_at,omitempty"`
 	SubmittedAt    time.Time            `json:"submitted_at"`
@@ -148,6 +149,7 @@ type SurveyRegionResponse struct {
 	SurveyPeriodID  string  `json:"survey_period_id"`
 	RegionGroupID   string  `json:"region_group_id"`
 	AssignmentCount int     `json:"assignment_count"`
+	Usaha           int     `json:"usaha"`
 	DraftCount      int     `json:"draft_count"`
 	SubmittedCount  int     `json:"submitted_count"`
 	ApprovedCount   int     `json:"approved_count"`
@@ -246,6 +248,7 @@ type ImportedLogItem struct {
 type ImportedAnswerItem struct {
 	AssignmentID string `json:"assignment_id"`
 	Name         string `json:"name"`
+	Value        string `json:"value,omitempty"`
 	AnsweredAt   string `json:"answered_at"`
 	RevisedAt    string `json:"revised_at"`
 }

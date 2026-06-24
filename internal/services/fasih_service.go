@@ -23,6 +23,7 @@ const fasihAssignmentHistoryByIDPath = "/app/api/assignment-general/api/assignme
 const fasihRegionMetadataPath = "/app/api/region/api/v1/region-metadata"
 const fasihSurveyByIDPath = "/app/api/survey/api/v1/surveys"
 const fasihSurveyPeriodByIDPath = "/app/api/survey/api/v1/survey-periods"
+const defaultFasihUserAgent = "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36"
 
 var fasihColumns = []map[string]interface{}{
 	{"data": "id", "orderable": true},
@@ -48,6 +49,10 @@ func NewFasihService(cfg *config.FasihConfig) *FasihService {
 }
 
 func (s *FasihService) IsAvailable(ctx context.Context) bool {
+	return s.IsAvailableWithUserAgent(ctx, "")
+}
+
+func (s *FasihService) IsAvailableWithUserAgent(ctx context.Context, userAgent string) bool {
 	endpoint, err := url.Parse(s.cfg.BaseURL)
 	if err != nil {
 		return false
@@ -60,6 +65,7 @@ func (s *FasihService) IsAvailable(ctx context.Context) bool {
 	if err != nil {
 		return false
 	}
+	request.Header.Set("User-Agent", s.resolveUserAgent(userAgent))
 
 	client := &http.Client{Timeout: 5 * time.Second}
 	response, err := client.Do(request)
@@ -73,6 +79,10 @@ func (s *FasihService) IsAvailable(ctx context.Context) bool {
 }
 
 func (s *FasihService) IsAuthorizedForSurveyPeriod(ctx context.Context, creds dto.FasihCredentials, surveyPeriodID string) bool {
+	return s.IsAuthorizedForSurveyPeriodWithUserAgent(ctx, creds, surveyPeriodID, "")
+}
+
+func (s *FasihService) IsAuthorizedForSurveyPeriodWithUserAgent(ctx context.Context, creds dto.FasihCredentials, surveyPeriodID string, userAgent string) bool {
 	surveyPeriodID = strings.TrimSpace(surveyPeriodID)
 	if surveyPeriodID == "" {
 		return false
@@ -91,7 +101,7 @@ func (s *FasihService) IsAuthorizedForSurveyPeriod(ctx context.Context, creds dt
 		return false
 	}
 
-	setFasihHeaders(httpReq, creds)
+	s.setFasihHeaders(httpReq, creds, userAgent)
 
 	client := &http.Client{Timeout: 10 * time.Second}
 	resp, err := client.Do(httpReq)
@@ -224,7 +234,7 @@ func (s *FasihService) doJSONRequestWithRetry(
 		if len(body) > 0 {
 			httpReq.Header.Set("Content-Type", "application/json")
 		}
-		setFasihHeaders(httpReq, creds)
+		s.setFasihHeaders(httpReq, creds, "")
 
 		resp, doErr := (&http.Client{}).Do(httpReq)
 		if doErr != nil {
@@ -421,12 +431,24 @@ func (s *FasihService) GetRegionsByLevel(ctx context.Context, creds dto.FasihCre
 	return &result, nil
 }
 
-func setFasihHeaders(req *http.Request, creds dto.FasihCredentials) {
+func (s *FasihService) setFasihHeaders(req *http.Request, creds dto.FasihCredentials, userAgent string) {
 	req.Header.Set("Accept", "application/json, text/plain, */*")
 	req.Header.Set("x-xsrf-token", creds.XSRFToken)
 	req.Header.Set("Cookie", creds.Cookie)
 	req.Header.Set("X-Requested-With", "XMLHttpRequest")
-	req.Header.Set("User-Agent", "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36")
+	req.Header.Set("User-Agent", s.resolveUserAgent(userAgent))
+}
+
+func (s *FasihService) resolveUserAgent(requestUserAgent string) string {
+	if ua := strings.TrimSpace(requestUserAgent); ua != "" {
+		return ua
+	}
+
+	if ua := strings.TrimSpace(s.cfg.UserAgent); ua != "" {
+		return ua
+	}
+
+	return defaultFasihUserAgent
 }
 
 func decodeFasihJSONResponse(resp *http.Response, out interface{}, endpoint string) error {

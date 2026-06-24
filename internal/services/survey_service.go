@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"log"
+	"math"
 	"net/http"
 	"sort"
 	"strconv"
@@ -852,10 +853,18 @@ func (s *SurveyService) ImportSurveyAssignments(ctx context.Context, surveyPerio
 	}
 
 	answersByAssignment := make(map[string][]models.Answer)
+	usahaByAssignment := make(map[string]int)
 	for _, item := range payload.Answers {
 		assignmentID := strings.TrimSpace(item.AssignmentID)
 		name := strings.TrimSpace(item.Name)
+		value := strings.TrimSpace(item.Value)
 		if assignmentID == "" || name == "" {
+			continue
+		}
+		if strings.EqualFold(name, "jumlah_usaha") {
+			if usaha, ok := parseUsahaString(value); ok {
+				usahaByAssignment[assignmentID] = usaha
+			}
 			continue
 		}
 
@@ -937,6 +946,7 @@ func (s *SurveyService) ImportSurveyAssignments(ctx context.Context, surveyPerio
 			RegionLevel6:   trimmedPtr(item.RegionLevel6),
 			Latitude:       item.Latitude,
 			Longitude:      item.Longitude,
+			Usaha:          usahaByAssignment[assignmentID],
 			OpenedAt:       sql.NullTime{Time: openedAt, Valid: hasOpenedAt},
 			StartedAt:      sql.NullTime{Time: startedAt, Valid: hasStartedAt},
 			SubmittedAt:    submittedAt,
@@ -1355,6 +1365,7 @@ func (s *SurveyService) SyncSurveyAssignments(ctx context.Context, surveyPeriodI
 					RegionLevel6:   regionLevel6,
 					Latitude:       row.Latitude,
 					Longitude:      row.Longitude,
+					Usaha:          0,
 					OpenedAt:       openedAt,
 					StartedAt:      startedAt,
 					SubmittedAt:    submittedAt,
@@ -1388,6 +1399,17 @@ func (s *SurveyService) SyncSurveyAssignments(ctx context.Context, surveyPeriodI
 					return nil, err
 				}
 
+				shouldUpsertAssignment := false
+
+				usaha, hasUsaha, err := extractUsahaFromDetail(assignmentResp.Data.Data)
+				if err != nil {
+					return nil, err
+				}
+				if hasUsaha {
+					assignment.Usaha = usaha
+					shouldUpsertAssignment = true
+				}
+
 				openedAtFromDetail, hasOpenedAtFromDetail, err := extractOpenedAtFromDetail(assignmentResp.Data.Data)
 				if err != nil {
 					return nil, err
@@ -1396,8 +1418,6 @@ func (s *SurveyService) SyncSurveyAssignments(ctx context.Context, surveyPeriodI
 				if err != nil {
 					return nil, err
 				}
-
-				shouldUpsertAssignment := false
 				if hasOpenedAtFromDetail {
 					assignment.OpenedAt = sql.NullTime{Time: openedAtFromDetail, Valid: true}
 					shouldUpsertAssignment = true
@@ -1803,6 +1823,9 @@ func extractAnswersFromDetail(assignmentID string, raw dto.FasihJSON) ([]models.
 		if item.DataKey == "" {
 			continue
 		}
+		if strings.EqualFold(strings.TrimSpace(item.DataKey), "jumlah_usaha") {
+			continue
+		}
 
 		answeredAt, hasCreated := parseDynamicTime(item.CreatedAt)
 		revisedAt, hasUpdated := parseDynamicTime(item.UpdatedAt)
@@ -1875,6 +1898,121 @@ func extractStartedAtFromDetail(raw dto.FasihJSON) (time.Time, bool, error) {
 	}
 
 	return time.Time{}, false, nil
+}
+
+func normalizeAnswerValue(v interface{}) *string {
+	if v == nil {
+		return nil
+	}
+
+	switch t := v.(type) {
+	case string:
+		trimmed := strings.TrimSpace(t)
+		if trimmed == "" {
+			return nil
+		}
+		return &trimmed
+	case float64:
+		if math.Mod(t, 1) == 0 {
+			value := strconv.FormatInt(int64(t), 10)
+			return &value
+		}
+		value := strconv.FormatFloat(t, 'f', -1, 64)
+		return &value
+	case bool:
+		value := strconv.FormatBool(t)
+		return &value
+	default:
+		raw, err := json.Marshal(t)
+		if err != nil {
+			fallback := strings.TrimSpace(fmt.Sprint(t))
+			if fallback == "" {
+				return nil
+			}
+			return &fallback
+		}
+		value := strings.TrimSpace(string(raw))
+		if value == "" || value == "null" {
+			return nil
+		}
+		return &value
+	}
+}
+
+func extractUsahaFromDetail(raw dto.FasihJSON) (int, bool, error) {
+	if len(raw) == 0 {
+		return 0, false, nil
+	}
+
+	var payload dto.FasihAnswerPayload
+	if err := json.Unmarshal(raw, &payload); err != nil {
+		return 0, false, err
+	}
+
+	for _, item := range payload.Answers {
+		if !strings.EqualFold(strings.TrimSpace(item.DataKey), "jumlah_usaha") {
+			continue
+		}
+
+		usaha, ok := parseUsahaValue(item.Answer)
+		if !ok {
+			continue
+		}
+
+		return usaha, true, nil
+	}
+
+	return 0, false, nil
+}
+
+func parseUsahaString(raw string) (int, bool) {
+	trimmed := strings.TrimSpace(raw)
+	if trimmed == "" {
+		return 0, false
+	}
+
+	if value, err := strconv.Atoi(trimmed); err == nil {
+		return value, true
+	}
+
+	if value, err := strconv.ParseFloat(trimmed, 64); err == nil {
+		return int(math.Floor(value)), true
+	}
+
+	return 0, false
+}
+
+func parseUsahaValue(v interface{}) (int, bool) {
+	switch t := v.(type) {
+	case nil:
+		return 0, false
+	case float64:
+		return int(math.Floor(t)), true
+	case float32:
+		return int(math.Floor(float64(t))), true
+	case int:
+		return t, true
+	case int64:
+		return int(t), true
+	case int32:
+		return int(t), true
+	case json.Number:
+		if value, err := t.Int64(); err == nil {
+			return int(value), true
+		}
+		if value, err := t.Float64(); err == nil {
+			return int(math.Floor(value)), true
+		}
+		return 0, false
+	case string:
+		return parseUsahaString(t)
+	default:
+		raw, err := json.Marshal(t)
+		if err != nil {
+			return 0, false
+		}
+		return parseUsahaString(string(raw))
+	}
 }
 
 func parseDynamicTime(v interface{}) (time.Time, bool) {

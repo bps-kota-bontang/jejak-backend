@@ -21,7 +21,8 @@ func NewSystemHandler(fasihService *services.FasihService, surveyRepo repositori
 }
 
 func (h *SystemHandler) GetFeatures(c fiber.Ctx) error {
-	response := dto.SystemFeaturesResponse{FasihAvailable: h.fasihService.IsAvailable(c.Context())}
+	userAgent := strings.TrimSpace(c.Get("User-Agent"))
+	response := dto.SystemFeaturesResponse{FasihAvailable: h.fasihService.IsAvailableWithUserAgent(c.Context(), userAgent)}
 	return respondOK(c, response, "System features retrieved successfully")
 }
 
@@ -38,13 +39,14 @@ func (h *SystemHandler) GetFasihAuthorization(c fiber.Ctx) error {
 
 	response := dto.SystemFasihAuthorizationResponse{
 		SurveyPeriodID: surveyPeriodID,
-		FasihAuthorized: h.fasihService.IsAuthorizedForSurveyPeriod(
+		FasihAuthorized: h.fasihService.IsAuthorizedForSurveyPeriodWithUserAgent(
 			c.Context(),
 			dto.FasihCredentials{
 				Cookie:    survey.Cookie,
 				XSRFToken: survey.XSRFToken,
 			},
 			surveyPeriodID,
+			strings.TrimSpace(c.Get("User-Agent")),
 		),
 	}
 

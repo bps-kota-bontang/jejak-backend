@@ -7,6 +7,7 @@ import (
 
 type FasihConfig struct {
 	BaseURL              string
+	UserAgent            string
 	HttpTimeoutSeconds   int
 	HttpMaxRetries       int
 	HttpRetryBaseDelayMs int
@@ -15,6 +16,7 @@ type FasihConfig struct {
 func LoadFasihConfig() (*FasihConfig, error) {
 	cfg := &FasihConfig{
 		BaseURL:              getEnv("FASIH_BASE_URL", "https://fasih-sm.bps.go.id"),
+		UserAgent:            getEnv("FASIH_USER_AGENT", ""),
 		HttpTimeoutSeconds:   getEnvIntWithFallback("FASIH_HTTP_TIMEOUT_SECONDS", "FASIH_DATATABLE_TIMEOUT_SECONDS", 75),
 		HttpMaxRetries:       getEnvIntWithFallback("FASIH_HTTP_MAX_RETRIES", "FASIH_DATATABLE_MAX_RETRIES", 3),
 		HttpRetryBaseDelayMs: getEnvIntWithFallback("FASIH_HTTP_RETRY_BASE_DELAY_MS", "FASIH_DATATABLE_RETRY_BASE_DELAY_MS", 1500),

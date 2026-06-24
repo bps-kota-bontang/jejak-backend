@@ -98,6 +98,7 @@ func (r *SurveyRepositoryImpl) UpdateSurveyRegionAssignmentCounts(surveyPeriodID
 			Where("survey_period_id = ?", surveyPeriodID).
 			Updates(map[string]interface{}{
 				"assignment_count": 0,
+				"usaha":            0,
 				"draft_count":      0,
 				"submitted_count":  0,
 				"approved_count":   0,
@@ -110,6 +111,7 @@ func (r *SurveyRepositoryImpl) UpdateSurveyRegionAssignmentCounts(surveyPeriodID
 		return tx.Exec(`
 			UPDATE regions AS r
 			SET assignment_count = counts.assignment_count,
+				usaha = counts.usaha,
 				draft_count = counts.draft_count,
 				submitted_count = counts.submitted_count,
 				approved_count = counts.approved_count,
@@ -119,6 +121,7 @@ func (r *SurveyRepositoryImpl) UpdateSurveyRegionAssignmentCounts(surveyPeriodID
 				SELECT survey_period_id,
 				       region_full_code,
 				       COUNT(*) AS assignment_count,
+				       COALESCE(SUM(COALESCE(usaha, 0)), 0) AS usaha,
 				       SUM(CASE WHEN status = ? THEN 1 ELSE 0 END) AS draft_count,
 				       SUM(CASE WHEN status = ? THEN 1 ELSE 0 END) AS submitted_count,
 				       SUM(CASE WHEN status = ? THEN 1 ELSE 0 END) AS approved_count,
@@ -155,6 +158,14 @@ func (r *SurveyRepositoryImpl) UpdateSurveyRegionAssignmentCountsByRegion(survey
 			"assignment_count": gorm.Expr(`
 				COALESCE((
 					SELECT COUNT(*)
+					FROM assignments a
+					WHERE a.survey_period_id = regions.survey_period_id
+					  AND a.region_full_code = regions.full_code
+				), 0)
+			`),
+			"usaha": gorm.Expr(`
+				COALESCE((
+					SELECT COALESCE(SUM(COALESCE(a.usaha, 0)), 0)
 					FROM assignments a
 					WHERE a.survey_period_id = regions.survey_period_id
 					  AND a.region_full_code = regions.full_code
@@ -307,6 +318,7 @@ func (r *SurveyRepositoryImpl) FindSurveyRegionsByLevel(surveyPeriodID string, l
 	}
 
 	selectParts = append(selectParts, fullCodeExpr+" AS full_code")
+	selectParts = append(selectParts, "COALESCE(SUM(usaha), 0) AS usaha")
 
 	query := r.db.Model(&models.Region{}).
 		Where("survey_period_id = ?", surveyPeriodID).

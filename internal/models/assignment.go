@@ -64,6 +64,7 @@ type Assignment struct {
 	RegionLevel6   *string `gorm:"type:text"`
 	Latitude       float64 `gorm:"type:double precision;not null"`
 	Longitude      float64 `gorm:"type:double precision;not null"`
+	Usaha          int     `gorm:"type:int;not null;default:0"`
 	OpenedAt       sql.NullTime
 	StartedAt      sql.NullTime
 	SubmittedAt    time.Time

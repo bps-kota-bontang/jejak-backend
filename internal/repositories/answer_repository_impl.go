@@ -28,7 +28,6 @@ func (r *AnswerRepositoryImpl) ReplaceByAssignmentID(assignmentID string, answer
 			},
 			DoUpdates: clause.AssignmentColumns([]string{
 				"location_id",
-				"value",
 				"answered_at",
 				"revised_at",
 				"updated_at",

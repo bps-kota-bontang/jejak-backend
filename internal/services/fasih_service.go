@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log"
 	"net"
 	"net/http"
 	"net/url"
@@ -53,8 +54,12 @@ func (s *FasihService) IsAvailable(ctx context.Context) bool {
 }
 
 func (s *FasihService) IsAvailableWithUserAgent(ctx context.Context, userAgent string) bool {
+	resolvedUserAgent, source := s.resolveUserAgentWithSource(userAgent)
+	log.Printf("[fasih][available] start baseURL=%s userAgentSource=%s userAgent=%q", s.cfg.BaseURL, source, resolvedUserAgent)
+
 	endpoint, err := url.Parse(s.cfg.BaseURL)
 	if err != nil {
+		log.Printf("[fasih][available][error] invalid baseURL=%s err=%v userAgentSource=%s userAgent=%q", s.cfg.BaseURL, err, source, resolvedUserAgent)
 		return false
 	}
 
@@ -63,17 +68,20 @@ func (s *FasihService) IsAvailableWithUserAgent(ctx context.Context, userAgent s
 
 	request, err := http.NewRequestWithContext(checkCtx, http.MethodGet, endpoint.String(), nil)
 	if err != nil {
+		log.Printf("[fasih][available][error] create request failed endpoint=%s err=%v userAgentSource=%s userAgent=%q", endpoint.String(), err, source, resolvedUserAgent)
 		return false
 	}
-	request.Header.Set("User-Agent", s.resolveUserAgent(userAgent))
+	request.Header.Set("User-Agent", resolvedUserAgent)
 
 	client := &http.Client{Timeout: 5 * time.Second}
 	response, err := client.Do(request)
 	if err != nil {
+		log.Printf("[fasih][available][error] request failed endpoint=%s err=%v userAgentSource=%s userAgent=%q", endpoint.String(), err, source, resolvedUserAgent)
 		return false
 	}
 	defer response.Body.Close()
 	_, _ = io.Copy(io.Discard, response.Body)
+	log.Printf("[fasih][available] success endpoint=%s status=%s userAgentSource=%s userAgent=%q", endpoint.String(), response.Status, source, resolvedUserAgent)
 
 	return true
 }
@@ -83,12 +91,17 @@ func (s *FasihService) IsAuthorizedForSurveyPeriod(ctx context.Context, creds dt
 }
 
 func (s *FasihService) IsAuthorizedForSurveyPeriodWithUserAgent(ctx context.Context, creds dto.FasihCredentials, surveyPeriodID string, userAgent string) bool {
+	resolvedUserAgent, source := s.resolveUserAgentWithSource(userAgent)
+
 	surveyPeriodID = strings.TrimSpace(surveyPeriodID)
 	if surveyPeriodID == "" {
+		log.Printf("[fasih][authorization][error] empty surveyPeriodID userAgentSource=%s userAgent=%q", source, resolvedUserAgent)
 		return false
 	}
+	log.Printf("[fasih][authorization] start surveyPeriodID=%s userAgentSource=%s userAgent=%q", surveyPeriodID, source, resolvedUserAgent)
 
 	if strings.TrimSpace(creds.XSRFToken) == "" || strings.TrimSpace(creds.Cookie) == "" {
+		log.Printf("[fasih][authorization][error] missing credentials surveyPeriodID=%s userAgentSource=%s userAgent=%q", surveyPeriodID, source, resolvedUserAgent)
 		return false
 	}
 
@@ -98,27 +111,32 @@ func (s *FasihService) IsAuthorizedForSurveyPeriodWithUserAgent(ctx context.Cont
 	endpoint := fmt.Sprintf("%s%s/%s", s.cfg.BaseURL, fasihSurveyPeriodByIDPath, url.PathEscape(surveyPeriodID))
 	httpReq, err := http.NewRequestWithContext(checkCtx, http.MethodGet, endpoint, nil)
 	if err != nil {
+		log.Printf("[fasih][authorization][error] create request failed surveyPeriodID=%s endpoint=%s err=%v userAgentSource=%s userAgent=%q", surveyPeriodID, endpoint, err, source, resolvedUserAgent)
 		return false
 	}
 
-	s.setFasihHeaders(httpReq, creds, userAgent)
+	s.setFasihHeaders(httpReq, creds, resolvedUserAgent)
 
 	client := &http.Client{Timeout: 10 * time.Second}
 	resp, err := client.Do(httpReq)
 	if err != nil {
+		log.Printf("[fasih][authorization][error] request failed surveyPeriodID=%s endpoint=%s err=%v userAgentSource=%s userAgent=%q", surveyPeriodID, endpoint, err, source, resolvedUserAgent)
 		return false
 	}
 	defer resp.Body.Close()
 
 	if resp.StatusCode == http.StatusUnauthorized || resp.StatusCode == http.StatusForbidden {
 		_, _ = io.Copy(io.Discard, resp.Body)
+		log.Printf("[fasih][authorization] denied surveyPeriodID=%s endpoint=%s status=%s userAgentSource=%s userAgent=%q", surveyPeriodID, endpoint, resp.Status, source, resolvedUserAgent)
 		return false
 	}
 
 	var payload map[string]interface{}
 	if err := decodeFasihJSONResponse(resp, &payload, fasihSurveyPeriodByIDPath+"/{surveyPeriodId}"); err != nil {
+		log.Printf("[fasih][authorization][error] decode failed surveyPeriodID=%s endpoint=%s status=%s err=%v userAgentSource=%s userAgent=%q", surveyPeriodID, endpoint, resp.Status, err, source, resolvedUserAgent)
 		return false
 	}
+	log.Printf("[fasih][authorization] success surveyPeriodID=%s endpoint=%s status=%s userAgentSource=%s userAgent=%q", surveyPeriodID, endpoint, resp.Status, source, resolvedUserAgent)
 
 	return true
 }
@@ -440,15 +458,20 @@ func (s *FasihService) setFasihHeaders(req *http.Request, creds dto.FasihCredent
 }
 
 func (s *FasihService) resolveUserAgent(requestUserAgent string) string {
+	resolvedUserAgent, _ := s.resolveUserAgentWithSource(requestUserAgent)
+	return resolvedUserAgent
+}
+
+func (s *FasihService) resolveUserAgentWithSource(requestUserAgent string) (string, string) {
 	if ua := strings.TrimSpace(requestUserAgent); ua != "" {
-		return ua
+		return ua, "request"
 	}
 
 	if ua := strings.TrimSpace(s.cfg.UserAgent); ua != "" {
-		return ua
+		return ua, "env"
 	}
 
-	return defaultFasihUserAgent
+	return defaultFasihUserAgent, "default"
 }
 
 func decodeFasihJSONResponse(resp *http.Response, out interface{}, endpoint string) error {

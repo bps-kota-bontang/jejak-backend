@@ -47,7 +47,7 @@ func (h *SystemHandler) GetFasihAuthorization(c fiber.Ctx) error {
 
 	response := dto.SystemFasihAuthorizationResponse{
 		SurveyPeriodID: surveyPeriodID,
-		FasihAuthorized: h.fasihService.IsAuthorizedForSurveyPeriodWithUserAgent(
+		FasihAuthorized: h.fasihService.IsAuthorizedForSurveyPeriodWithRequestHeaders(
 			c.Context(),
 			dto.FasihCredentials{
 				Cookie:    survey.Cookie,
@@ -55,6 +55,7 @@ func (h *SystemHandler) GetFasihAuthorization(c fiber.Ctx) error {
 			},
 			surveyPeriodID,
 			requestUserAgent,
+			nil,
 		),
 	}
 	log.Printf("[handler][system][fasih-authorization] result surveyPeriodID=%s fasihAuthorized=%t requestUserAgent=%q effectiveUserAgentSource=%s effectiveUserAgent=%q", surveyPeriodID, response.FasihAuthorized, requestUserAgent, userAgentSource, effectiveUserAgent)

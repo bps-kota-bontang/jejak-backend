@@ -24,7 +24,7 @@ const fasihAssignmentHistoryByIDPath = "/app/api/assignment-general/api/assignme
 const fasihRegionMetadataPath = "/app/api/region/api/v1/region-metadata"
 const fasihSurveyByIDPath = "/app/api/survey/api/v1/surveys"
 const fasihSurveyPeriodByIDPath = "/app/api/survey/api/v1/survey-periods"
-const defaultFasihUserAgent = "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36"
+const staticFasihUserAgent = "Mozilla/5.0 (Windows NT 10.0; WOW64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/149.0.0.0 Safari/537.36"
 
 var fasihColumns = []map[string]interface{}{
 	{"data": "id", "orderable": true},
@@ -39,6 +39,22 @@ var fasihColumns = []map[string]interface{}{
 	{"data": "data8", "orderable": true},
 	{"data": "data9", "orderable": true},
 	{"data": "data10", "orderable": true},
+}
+
+var defaultFasihBrowserHeaders = map[string]string{
+	"Accept-Encoding":    "gzip, deflate, br, zstd",
+	"Accept-Language":    "en-US,en;q=0.9",
+	"Cache-Control":      "max-age=0",
+	"Origin":             "https://fasih-sm.bps.go.id",
+	"Priority":           "u=1, i",
+	"Referer":            "https://fasih-sm.bps.go.id",
+	"Sec-CH-UA":          "\"Not A;Brand\";v=\"99\", \"Chromium\";v=\"149\", \"Google Chrome\";v=\"149\"",
+	"Sec-CH-UA-Mobile":   "?0",
+	"Sec-CH-UA-Platform": "\"Windows\"",
+	"Sec-Fetch-Dest":     "empty",
+	"Sec-Fetch-Mode":     "cors",
+	"Sec-Fetch-Site":     "same-origin",
+	"Sec-GPC":            "1",
 }
 
 type FasihService struct {
@@ -91,7 +107,12 @@ func (s *FasihService) IsAuthorizedForSurveyPeriod(ctx context.Context, creds dt
 }
 
 func (s *FasihService) IsAuthorizedForSurveyPeriodWithUserAgent(ctx context.Context, creds dto.FasihCredentials, surveyPeriodID string, userAgent string) bool {
+	return s.IsAuthorizedForSurveyPeriodWithRequestHeaders(ctx, creds, surveyPeriodID, userAgent, nil)
+}
+
+func (s *FasihService) IsAuthorizedForSurveyPeriodWithRequestHeaders(ctx context.Context, creds dto.FasihCredentials, surveyPeriodID string, userAgent string, requestHeaders map[string]string) bool {
 	resolvedUserAgent, source := s.resolveUserAgentWithSource(userAgent)
+	requestHeaders = nil
 
 	surveyPeriodID = strings.TrimSpace(surveyPeriodID)
 	if surveyPeriodID == "" {
@@ -107,7 +128,7 @@ func (s *FasihService) IsAuthorizedForSurveyPeriodWithUserAgent(ctx context.Cont
 
 	endpoint := fmt.Sprintf("%s%s/%s", s.cfg.BaseURL, fasihSurveyPeriodByIDPath, url.PathEscape(surveyPeriodID))
 	var payload map[string]interface{}
-	if err := s.doJSONRequestWithRetry(ctx, creds, http.MethodGet, endpoint, fasihSurveyPeriodByIDPath+"/{surveyPeriodId}", nil, &payload, resolvedUserAgent); err != nil {
+	if err := s.doJSONRequestWithRetry(ctx, creds, http.MethodGet, endpoint, fasihSurveyPeriodByIDPath+"/{surveyPeriodId}", nil, &payload, resolvedUserAgent, requestHeaders); err != nil {
 		if strings.Contains(err.Error(), "status 401") || strings.Contains(err.Error(), "status 403") {
 			log.Printf("[fasih][authorization] denied surveyPeriodID=%s endpoint=%s err=%v userAgentSource=%s userAgent=%q", surveyPeriodID, endpoint, err, source, resolvedUserAgent)
 			return false
@@ -167,7 +188,7 @@ func (s *FasihService) GetAssignmentDatatable(ctx context.Context, creds dto.Fas
 	}
 
 	var result dto.FasihDatatableResponse
-	if err := s.doJSONRequestWithRetry(ctx, creds, http.MethodPost, s.cfg.BaseURL+fasihDatatablePath, fasihDatatablePath, rawBody, &result, ""); err != nil {
+	if err := s.doJSONRequestWithRetry(ctx, creds, http.MethodPost, s.cfg.BaseURL+fasihDatatablePath, fasihDatatablePath, rawBody, &result, "", nil); err != nil {
 		return nil, err
 	}
 
@@ -209,6 +230,7 @@ func (s *FasihService) doJSONRequestWithRetry(
 	body []byte,
 	out interface{},
 	userAgent string,
+	requestHeaders map[string]string,
 ) error {
 	maxAttempts := s.cfg.HttpMaxRetries
 	timeout := time.Duration(s.cfg.HttpTimeoutSeconds) * time.Second
@@ -237,7 +259,7 @@ func (s *FasihService) doJSONRequestWithRetry(
 		if len(body) > 0 {
 			httpReq.Header.Set("Content-Type", "application/json")
 		}
-		s.setFasihHeaders(httpReq, creds, userAgent)
+		s.setFasihHeaders(httpReq, creds, userAgent, requestHeaders)
 
 		resp, doErr := (&http.Client{}).Do(httpReq)
 		if doErr != nil {
@@ -337,7 +359,7 @@ func (s *FasihService) GetAssignmentByID(ctx context.Context, creds dto.FasihCre
 	endpoint.RawQuery = query.Encode()
 
 	var result dto.FasihAssignmentByIDResponse
-	if err := s.doJSONRequestWithRetry(ctx, creds, http.MethodGet, endpoint.String(), fasihAssignmentByIDPath, nil, &result, ""); err != nil {
+	if err := s.doJSONRequestWithRetry(ctx, creds, http.MethodGet, endpoint.String(), fasihAssignmentByIDPath, nil, &result, "", nil); err != nil {
 		return nil, err
 	}
 
@@ -359,7 +381,7 @@ func (s *FasihService) GetAssignmentHistoryByID(ctx context.Context, creds dto.F
 	endpoint.RawQuery = query.Encode()
 
 	var result dto.FasihAssignmentHistoryByIDResponse
-	if err := s.doJSONRequestWithRetry(ctx, creds, http.MethodGet, endpoint.String(), fasihAssignmentHistoryByIDPath, nil, &result, ""); err != nil {
+	if err := s.doJSONRequestWithRetry(ctx, creds, http.MethodGet, endpoint.String(), fasihAssignmentHistoryByIDPath, nil, &result, "", nil); err != nil {
 		return nil, err
 	}
 
@@ -381,7 +403,7 @@ func (s *FasihService) GetRegionMetadata(ctx context.Context, creds dto.FasihCre
 	endpoint.RawQuery = query.Encode()
 
 	var result dto.FasihRegionMetadataByGroupResponse
-	if err := s.doJSONRequestWithRetry(ctx, creds, http.MethodGet, endpoint.String(), fasihRegionMetadataPath, nil, &result, ""); err != nil {
+	if err := s.doJSONRequestWithRetry(ctx, creds, http.MethodGet, endpoint.String(), fasihRegionMetadataPath, nil, &result, "", nil); err != nil {
 		return nil, err
 	}
 
@@ -394,7 +416,7 @@ func (s *FasihService) GetSurveyByID(ctx context.Context, creds dto.FasihCredent
 	}
 
 	var result dto.FasihSurveyByIDResponse
-	if err := s.doJSONRequestWithRetry(ctx, creds, http.MethodGet, s.cfg.BaseURL+fasihSurveyByIDPath+"/"+req.SurveyID, fasihSurveyByIDPath+"/{surveyId}", nil, &result, ""); err != nil {
+	if err := s.doJSONRequestWithRetry(ctx, creds, http.MethodGet, s.cfg.BaseURL+fasihSurveyByIDPath+"/"+req.SurveyID, fasihSurveyByIDPath+"/{surveyId}", nil, &result, "", nil); err != nil {
 		return nil, err
 	}
 
@@ -427,19 +449,30 @@ func (s *FasihService) GetRegionsByLevel(ctx context.Context, creds dto.FasihCre
 	endpoint.RawQuery = query.Encode()
 
 	var result dto.FasihRegionListResponse
-	if err := s.doJSONRequestWithRetry(ctx, creds, http.MethodGet, endpoint.String(), path, nil, &result, ""); err != nil {
+	if err := s.doJSONRequestWithRetry(ctx, creds, http.MethodGet, endpoint.String(), path, nil, &result, "", nil); err != nil {
 		return nil, err
 	}
 
 	return &result, nil
 }
 
-func (s *FasihService) setFasihHeaders(req *http.Request, creds dto.FasihCredentials, userAgent string) {
+func (s *FasihService) setFasihHeaders(req *http.Request, creds dto.FasihCredentials, userAgent string, requestHeaders map[string]string) {
 	req.Header.Set("Accept", "application/json, text/plain, */*")
 	req.Header.Set("x-xsrf-token", creds.XSRFToken)
 	req.Header.Set("Cookie", creds.Cookie)
 	req.Header.Set("X-Requested-With", "XMLHttpRequest")
 	req.Header.Set("User-Agent", s.resolveUserAgent(userAgent))
+	s.applyDefaultBrowserHeaders(req)
+	_ = requestHeaders
+	// Keep Referer stable for Fasih requests to match expected origin checks.
+	req.Header.Set("Referer", "https://fasih-sm.bps.go.id")
+	req.Header.Set("Origin", "https://fasih-sm.bps.go.id")
+}
+
+func (s *FasihService) applyDefaultBrowserHeaders(req *http.Request) {
+	for key, value := range defaultFasihBrowserHeaders {
+		req.Header.Set(key, value)
+	}
 }
 
 func (s *FasihService) resolveUserAgent(requestUserAgent string) string {
@@ -452,15 +485,8 @@ func (s *FasihService) ResolveUserAgentForLog(requestUserAgent string) (string, 
 }
 
 func (s *FasihService) resolveUserAgentWithSource(requestUserAgent string) (string, string) {
-	if ua := strings.TrimSpace(requestUserAgent); ua != "" {
-		return ua, "request"
-	}
-
-	if ua := strings.TrimSpace(s.cfg.UserAgent); ua != "" {
-		return ua, "env"
-	}
-
-	return defaultFasihUserAgent, "default"
+	_ = requestUserAgent
+	return staticFasihUserAgent, "static"
 }
 
 func decodeFasihJSONResponse(resp *http.Response, out interface{}, endpoint string) error {

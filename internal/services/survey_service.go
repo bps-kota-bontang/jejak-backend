@@ -853,7 +853,7 @@ func (s *SurveyService) ImportSurveyAssignments(ctx context.Context, surveyPerio
 	}
 
 	answersByAssignment := make(map[string][]models.Answer)
-	usahaByAssignment := make(map[string]int)
+	usahaByAssignment := make(map[string]*int)
 	for _, item := range payload.Answers {
 		assignmentID := strings.TrimSpace(item.AssignmentID)
 		name := strings.TrimSpace(item.Name)
@@ -863,7 +863,8 @@ func (s *SurveyService) ImportSurveyAssignments(ctx context.Context, surveyPerio
 		}
 		if strings.EqualFold(name, "jumlah_usaha") {
 			if usaha, ok := parseUsahaString(value); ok {
-				usahaByAssignment[assignmentID] = usaha
+				usahaValue := usaha
+				usahaByAssignment[assignmentID] = &usahaValue
 			}
 			continue
 		}
@@ -1365,18 +1366,21 @@ func (s *SurveyService) SyncSurveyAssignments(ctx context.Context, surveyPeriodI
 					RegionLevel6:   regionLevel6,
 					Latitude:       row.Latitude,
 					Longitude:      row.Longitude,
-					Usaha:          0,
+					Usaha:          nil,
 					OpenedAt:       openedAt,
 					StartedAt:      startedAt,
 					SubmittedAt:    submittedAt,
 					RevisedAt:      revisedAt,
+				}
+				if hasExistingAssignment {
+					assignment.Usaha = existingAssignment.Usaha
 				}
 				if err := s.assignmentRepo.Upsert(assignment); err != nil {
 					return nil, err
 				}
 				result.SavedAssignments++
 
-				if hasExistingAssignment && existingAssignment.RevisedAt.Equal(revisedAt) && existingAssignment.StartedAt.Valid {
+				if hasExistingAssignment && existingAssignment.RevisedAt.Equal(revisedAt) && existingAssignment.StartedAt.Valid && existingAssignment.Usaha != nil {
 					skippedUnchanged++
 					continue
 				}
@@ -1406,7 +1410,9 @@ func (s *SurveyService) SyncSurveyAssignments(ctx context.Context, surveyPeriodI
 					return nil, err
 				}
 				if hasUsaha {
-					assignment.Usaha = usaha
+					log.Printf("[sync] assignment %s has usaha=%d from detail, updating", row.ID, usaha)
+					usahaValue := usaha
+					assignment.Usaha = &usahaValue
 					shouldUpsertAssignment = true
 				}
 
@@ -1821,9 +1827,6 @@ func extractAnswersFromDetail(assignmentID string, raw dto.FasihJSON) ([]models.
 	answers := make([]models.Answer, 0)
 	for _, item := range payload.Answers {
 		if item.DataKey == "" {
-			continue
-		}
-		if strings.EqualFold(strings.TrimSpace(item.DataKey), "jumlah_usaha") {
 			continue
 		}
 

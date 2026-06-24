@@ -30,6 +30,7 @@ func (r *AssignmentRepositoryImpl) Upsert(assignment *models.Assignment) error {
 			"region_level6",
 			"latitude",
 			"longitude",
+			"usaha",
 			"opened_at",
 			"started_at",
 			"submitted_at",

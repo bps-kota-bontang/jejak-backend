@@ -66,7 +66,7 @@ type AssignmentResponse struct {
 	RegionLevel6   *string              `json:"region_level_6,omitempty"`
 	Latitude       float64              `json:"latitude"`
 	Longitude      float64              `json:"longitude"`
-	Usaha          int                  `json:"usaha"`
+	Usaha          *int                 `json:"usaha"`
 	OpenedAt       *time.Time           `json:"opened_at,omitempty"`
 	StartedAt      *time.Time           `json:"started_at,omitempty"`
 	SubmittedAt    time.Time            `json:"submitted_at"`

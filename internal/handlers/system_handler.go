@@ -22,10 +22,11 @@ func NewSystemHandler(fasihService *services.FasihService, surveyRepo repositori
 }
 
 func (h *SystemHandler) GetFeatures(c fiber.Ctx) error {
-	userAgent := strings.TrimSpace(c.Get("User-Agent"))
-	log.Printf("[handler][system][features] check fasih availability userAgent=%q", userAgent)
-	response := dto.SystemFeaturesResponse{FasihAvailable: h.fasihService.IsAvailableWithUserAgent(c.Context(), userAgent)}
-	log.Printf("[handler][system][features] result fasihAvailable=%t userAgent=%q", response.FasihAvailable, userAgent)
+	requestUserAgent := strings.TrimSpace(c.Get("User-Agent"))
+	effectiveUserAgent, userAgentSource := h.fasihService.ResolveUserAgentForLog(requestUserAgent)
+	log.Printf("[handler][system][features] check fasih availability requestUserAgent=%q effectiveUserAgentSource=%s effectiveUserAgent=%q", requestUserAgent, userAgentSource, effectiveUserAgent)
+	response := dto.SystemFeaturesResponse{FasihAvailable: h.fasihService.IsAvailableWithUserAgent(c.Context(), requestUserAgent)}
+	log.Printf("[handler][system][features] result fasihAvailable=%t requestUserAgent=%q effectiveUserAgentSource=%s effectiveUserAgent=%q", response.FasihAvailable, requestUserAgent, userAgentSource, effectiveUserAgent)
 	return respondOK(c, response, "System features retrieved successfully")
 }
 
@@ -36,7 +37,8 @@ func (h *SystemHandler) GetFasihAuthorization(c fiber.Ctx) error {
 	}
 
 	requestUserAgent := strings.TrimSpace(c.Get("User-Agent"))
-	log.Printf("[handler][system][fasih-authorization] check surveyPeriodID=%s userAgent=%q", surveyPeriodID, requestUserAgent)
+	effectiveUserAgent, userAgentSource := h.fasihService.ResolveUserAgentForLog(requestUserAgent)
+	log.Printf("[handler][system][fasih-authorization] check surveyPeriodID=%s requestUserAgent=%q effectiveUserAgentSource=%s effectiveUserAgent=%q", surveyPeriodID, requestUserAgent, userAgentSource, effectiveUserAgent)
 
 	survey, err := h.surveyRepo.FindBySurveyPeriodID(surveyPeriodID)
 	if err != nil {
@@ -55,7 +57,7 @@ func (h *SystemHandler) GetFasihAuthorization(c fiber.Ctx) error {
 			requestUserAgent,
 		),
 	}
-	log.Printf("[handler][system][fasih-authorization] result surveyPeriodID=%s fasihAuthorized=%t userAgent=%q", surveyPeriodID, response.FasihAuthorized, requestUserAgent)
+	log.Printf("[handler][system][fasih-authorization] result surveyPeriodID=%s fasihAuthorized=%t requestUserAgent=%q effectiveUserAgentSource=%s effectiveUserAgent=%q", surveyPeriodID, response.FasihAuthorized, requestUserAgent, userAgentSource, effectiveUserAgent)
 
 	return respondOK(c, response, "System features retrieved successfully")
 }

@@ -112,6 +112,10 @@ func (s *FasihService) IsAuthorizedForSurveyPeriodWithUserAgent(ctx context.Cont
 			log.Printf("[fasih][authorization] denied surveyPeriodID=%s endpoint=%s err=%v userAgentSource=%s userAgent=%q", surveyPeriodID, endpoint, err, source, resolvedUserAgent)
 			return false
 		}
+		if strings.Contains(err.Error(), "non-JSON response") {
+			log.Printf("[fasih][authorization] denied surveyPeriodID=%s endpoint=%s reason=non-json-response err=%v userAgentSource=%s userAgent=%q", surveyPeriodID, endpoint, err, source, resolvedUserAgent)
+			return false
+		}
 
 		log.Printf("[fasih][authorization][error] request failed surveyPeriodID=%s endpoint=%s err=%v userAgentSource=%s userAgent=%q", surveyPeriodID, endpoint, err, source, resolvedUserAgent)
 		return false
@@ -443,6 +447,10 @@ func (s *FasihService) resolveUserAgent(requestUserAgent string) string {
 	return resolvedUserAgent
 }
 
+func (s *FasihService) ResolveUserAgentForLog(requestUserAgent string) (string, string) {
+	return s.resolveUserAgentWithSource(requestUserAgent)
+}
+
 func (s *FasihService) resolveUserAgentWithSource(requestUserAgent string) (string, string) {
 	if ua := strings.TrimSpace(requestUserAgent); ua != "" {
 		return ua, "request"
@@ -474,7 +482,7 @@ func decodeFasihJSONResponse(resp *http.Response, out interface{}, endpoint stri
 	}
 
 	if strings.HasPrefix(string(trimmed), "<") {
-		return fmt.Errorf("fasih: non-JSON response from %s (content-type=%q, body=%q)", endpoint, contentType, bodyPreview)
+		return fmt.Errorf("fasih: non-JSON response from %s (content-type=%q, body=%q)", endpoint, contentType, string(trimmed))
 	}
 
 	if err := json.Unmarshal(body, out); err != nil {

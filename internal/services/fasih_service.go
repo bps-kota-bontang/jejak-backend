@@ -105,38 +105,18 @@ func (s *FasihService) IsAuthorizedForSurveyPeriodWithUserAgent(ctx context.Cont
 		return false
 	}
 
-	checkCtx, cancel := context.WithTimeout(ctx, 10*time.Second)
-	defer cancel()
-
 	endpoint := fmt.Sprintf("%s%s/%s", s.cfg.BaseURL, fasihSurveyPeriodByIDPath, url.PathEscape(surveyPeriodID))
-	httpReq, err := http.NewRequestWithContext(checkCtx, http.MethodGet, endpoint, nil)
-	if err != nil {
-		log.Printf("[fasih][authorization][error] create request failed surveyPeriodID=%s endpoint=%s err=%v userAgentSource=%s userAgent=%q", surveyPeriodID, endpoint, err, source, resolvedUserAgent)
-		return false
-	}
+	var payload map[string]interface{}
+	if err := s.doJSONRequestWithRetry(ctx, creds, http.MethodGet, endpoint, fasihSurveyPeriodByIDPath+"/{surveyPeriodId}", nil, &payload, resolvedUserAgent); err != nil {
+		if strings.Contains(err.Error(), "status 401") || strings.Contains(err.Error(), "status 403") {
+			log.Printf("[fasih][authorization] denied surveyPeriodID=%s endpoint=%s err=%v userAgentSource=%s userAgent=%q", surveyPeriodID, endpoint, err, source, resolvedUserAgent)
+			return false
+		}
 
-	s.setFasihHeaders(httpReq, creds, resolvedUserAgent)
-
-	client := &http.Client{Timeout: 10 * time.Second}
-	resp, err := client.Do(httpReq)
-	if err != nil {
 		log.Printf("[fasih][authorization][error] request failed surveyPeriodID=%s endpoint=%s err=%v userAgentSource=%s userAgent=%q", surveyPeriodID, endpoint, err, source, resolvedUserAgent)
 		return false
 	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode == http.StatusUnauthorized || resp.StatusCode == http.StatusForbidden {
-		_, _ = io.Copy(io.Discard, resp.Body)
-		log.Printf("[fasih][authorization] denied surveyPeriodID=%s endpoint=%s status=%s userAgentSource=%s userAgent=%q", surveyPeriodID, endpoint, resp.Status, source, resolvedUserAgent)
-		return false
-	}
-
-	var payload map[string]interface{}
-	if err := decodeFasihJSONResponse(resp, &payload, fasihSurveyPeriodByIDPath+"/{surveyPeriodId}"); err != nil {
-		log.Printf("[fasih][authorization][error] decode failed surveyPeriodID=%s endpoint=%s status=%s err=%v userAgentSource=%s userAgent=%q", surveyPeriodID, endpoint, resp.Status, err, source, resolvedUserAgent)
-		return false
-	}
-	log.Printf("[fasih][authorization] success surveyPeriodID=%s endpoint=%s status=%s userAgentSource=%s userAgent=%q", surveyPeriodID, endpoint, resp.Status, source, resolvedUserAgent)
+	log.Printf("[fasih][authorization] success surveyPeriodID=%s endpoint=%s status=%d userAgentSource=%s userAgent=%q", surveyPeriodID, endpoint, http.StatusOK, source, resolvedUserAgent)
 
 	return true
 }
@@ -183,7 +163,7 @@ func (s *FasihService) GetAssignmentDatatable(ctx context.Context, creds dto.Fas
 	}
 
 	var result dto.FasihDatatableResponse
-	if err := s.doJSONRequestWithRetry(ctx, creds, http.MethodPost, s.cfg.BaseURL+fasihDatatablePath, fasihDatatablePath, rawBody, &result); err != nil {
+	if err := s.doJSONRequestWithRetry(ctx, creds, http.MethodPost, s.cfg.BaseURL+fasihDatatablePath, fasihDatatablePath, rawBody, &result, ""); err != nil {
 		return nil, err
 	}
 
@@ -224,6 +204,7 @@ func (s *FasihService) doJSONRequestWithRetry(
 	endpoint string,
 	body []byte,
 	out interface{},
+	userAgent string,
 ) error {
 	maxAttempts := s.cfg.HttpMaxRetries
 	timeout := time.Duration(s.cfg.HttpTimeoutSeconds) * time.Second
@@ -252,7 +233,7 @@ func (s *FasihService) doJSONRequestWithRetry(
 		if len(body) > 0 {
 			httpReq.Header.Set("Content-Type", "application/json")
 		}
-		s.setFasihHeaders(httpReq, creds, "")
+		s.setFasihHeaders(httpReq, creds, userAgent)
 
 		resp, doErr := (&http.Client{}).Do(httpReq)
 		if doErr != nil {
@@ -352,7 +333,7 @@ func (s *FasihService) GetAssignmentByID(ctx context.Context, creds dto.FasihCre
 	endpoint.RawQuery = query.Encode()
 
 	var result dto.FasihAssignmentByIDResponse
-	if err := s.doJSONRequestWithRetry(ctx, creds, http.MethodGet, endpoint.String(), fasihAssignmentByIDPath, nil, &result); err != nil {
+	if err := s.doJSONRequestWithRetry(ctx, creds, http.MethodGet, endpoint.String(), fasihAssignmentByIDPath, nil, &result, ""); err != nil {
 		return nil, err
 	}
 
@@ -374,7 +355,7 @@ func (s *FasihService) GetAssignmentHistoryByID(ctx context.Context, creds dto.F
 	endpoint.RawQuery = query.Encode()
 
 	var result dto.FasihAssignmentHistoryByIDResponse
-	if err := s.doJSONRequestWithRetry(ctx, creds, http.MethodGet, endpoint.String(), fasihAssignmentHistoryByIDPath, nil, &result); err != nil {
+	if err := s.doJSONRequestWithRetry(ctx, creds, http.MethodGet, endpoint.String(), fasihAssignmentHistoryByIDPath, nil, &result, ""); err != nil {
 		return nil, err
 	}
 
@@ -396,7 +377,7 @@ func (s *FasihService) GetRegionMetadata(ctx context.Context, creds dto.FasihCre
 	endpoint.RawQuery = query.Encode()
 
 	var result dto.FasihRegionMetadataByGroupResponse
-	if err := s.doJSONRequestWithRetry(ctx, creds, http.MethodGet, endpoint.String(), fasihRegionMetadataPath, nil, &result); err != nil {
+	if err := s.doJSONRequestWithRetry(ctx, creds, http.MethodGet, endpoint.String(), fasihRegionMetadataPath, nil, &result, ""); err != nil {
 		return nil, err
 	}
 
@@ -409,7 +390,7 @@ func (s *FasihService) GetSurveyByID(ctx context.Context, creds dto.FasihCredent
 	}
 
 	var result dto.FasihSurveyByIDResponse
-	if err := s.doJSONRequestWithRetry(ctx, creds, http.MethodGet, s.cfg.BaseURL+fasihSurveyByIDPath+"/"+req.SurveyID, fasihSurveyByIDPath+"/{surveyId}", nil, &result); err != nil {
+	if err := s.doJSONRequestWithRetry(ctx, creds, http.MethodGet, s.cfg.BaseURL+fasihSurveyByIDPath+"/"+req.SurveyID, fasihSurveyByIDPath+"/{surveyId}", nil, &result, ""); err != nil {
 		return nil, err
 	}
 
@@ -442,7 +423,7 @@ func (s *FasihService) GetRegionsByLevel(ctx context.Context, creds dto.FasihCre
 	endpoint.RawQuery = query.Encode()
 
 	var result dto.FasihRegionListResponse
-	if err := s.doJSONRequestWithRetry(ctx, creds, http.MethodGet, endpoint.String(), path, nil, &result); err != nil {
+	if err := s.doJSONRequestWithRetry(ctx, creds, http.MethodGet, endpoint.String(), path, nil, &result, ""); err != nil {
 		return nil, err
 	}
 

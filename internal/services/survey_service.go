@@ -1348,9 +1348,6 @@ func (s *SurveyService) SyncSurveyAssignments(ctx context.Context, surveyPeriodI
 				submittedAt := time.UnixMilli(row.DateCreated)
 
 				revisedAt := parseRevisedAtInt64(row.DateModified, submittedAt)
-				if err != nil {
-					return nil, fmt.Errorf("parse revisedAt for assignment %s: %w", row.ID, err)
-				}
 
 				assignment := &models.Assignment{
 					SurveyPeriodID: survey.SurveyPeriodID,

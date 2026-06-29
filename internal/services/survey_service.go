@@ -1345,12 +1345,9 @@ func (s *SurveyService) SyncSurveyAssignments(ctx context.Context, surveyPeriodI
 					startedAt = existingAssignment.StartedAt
 				}
 
-				submittedAt, err := parseFlexibleTime(row.DateCreated)
-				if err != nil {
-					return nil, fmt.Errorf("parse submittedAt for assignment %s: %w", row.ID, err)
-				}
+				submittedAt := time.UnixMilli(row.DateCreated)
 
-				revisedAt, err := parseRevisedAt(row.DateModified, submittedAt)
+				revisedAt := parseRevisedAtInt64(row.DateModified, submittedAt)
 				if err != nil {
 					return nil, fmt.Errorf("parse revisedAt for assignment %s: %w", row.ID, err)
 				}
@@ -1658,6 +1655,13 @@ func parseRevisedAt(raw string, fallback time.Time) (time.Time, error) {
 	}
 
 	return parsed, nil
+}
+
+func parseRevisedAtInt64(raw int64, fallback time.Time) time.Time {
+	if raw == 0 {
+		return fallback
+	}
+	return time.UnixMilli(raw)
 }
 
 func extractRegionLevelCodes(region dto.FasihRegion) (*string, *string, *string, *string, *string, *string, *string) {

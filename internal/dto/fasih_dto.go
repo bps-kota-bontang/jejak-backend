@@ -131,7 +131,7 @@ type FasihAssignmentRow struct {
 	Data8                              string                          `json:"data8"`
 	Data9                              string                          `json:"data9"`
 	Data10                             string                          `json:"data10"`
-	DateCreated                        string                          `json:"dateCreated"`
+	DateCreated                        int64                           `json:"dateCreated"`
 	IsActive                           bool                            `json:"isActive"`
 	SumError                           int                             `json:"sumError"`
 	SumRemark                          int                             `json:"sumRemark"`
@@ -152,7 +152,7 @@ type FasihAssignmentRow struct {
 	CurrentUserSurveyRoleCanPullSample bool                            `json:"currentUserSurveyRoleCanPullSample"`
 	SourceFrom                         string                          `json:"sourceFrom"`
 	Listing                            bool                            `json:"listing"`
-	DateModified                       string                          `json:"dateModified"`
+	DateModified                       int64                           `json:"dateModified"`
 	AssignmentResponsibility           []FasihAssignmentResponsibility `json:"assignmentResponsibility"`
 	AssignmentResponsibilityAdmin      []interface{}                   `json:"assignmentResponsibilityAdmin"`
 	Region                             FasihRegion                     `json:"region"`
@@ -169,7 +169,7 @@ type FasihAssignmentResponsibility struct {
 	SurveyUserBeforeID               string `json:"surveyUserBeforeId"`
 	SurveyUserCurrentID              string `json:"surveyUserCurrentId"`
 	AssignmentResponsibilityStatusID string `json:"assignmentResponsibilityStatusId"`
-	DateCreated                      string `json:"dateCreated"`
+	DateCreated                      int64  `json:"dateCreated"`
 	IsActive                         bool   `json:"isActive"`
 	BeforeUserID                     string `json:"beforeUserId"`
 	BeforeSurveyRoleID               string `json:"beforeSurveyRoleId"`
@@ -192,7 +192,7 @@ type FasihRegion struct {
 	ID          string           `json:"id"`
 	GroupID     string           `json:"groupId"`
 	VersionCode float64          `json:"versionCode"`
-	DateCreated string           `json:"dateCreated"`
+	DateCreated int64            `json:"dateCreated"`
 	IsActive    bool             `json:"isActive"`
 	Level1      FasihRegionLevel `json:"level1"`
 }

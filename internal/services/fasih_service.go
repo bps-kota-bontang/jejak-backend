@@ -42,6 +42,7 @@ var fasihColumns = []map[string]interface{}{
 }
 
 var defaultFasihBrowserHeaders = map[string]string{
+	"Accept":             "*/*",
 	"Accept-Encoding":    "gzip, deflate, br, zstd",
 	"Accept-Language":    "en-US,en;q=0.9",
 	"Cache-Control":      "max-age=0",
@@ -456,7 +457,7 @@ func (s *FasihService) GetRegionsByLevel(ctx context.Context, creds dto.FasihCre
 }
 
 func (s *FasihService) setFasihHeaders(req *http.Request, creds dto.FasihCredentials, userAgent string, requestHeaders map[string]string) {
-	req.Header.Set("Accept", "application/json, text/plain, */*")
+	// req.Header.Set("Accept", "application/json, text/plain, */*")
 	req.Header.Set("X-Xsrf-Token", creds.XSRFToken)
 	req.Header.Set("Cookie", creds.Cookie)
 	// req.Header.Set("X-Requested-With", "XMLHttpRequest")

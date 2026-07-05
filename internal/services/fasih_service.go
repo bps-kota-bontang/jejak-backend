@@ -42,12 +42,12 @@ var fasihColumns = []map[string]interface{}{
 }
 
 var defaultFasihBrowserHeaders = map[string]string{
-	"Accept-Encoding": "gzip, deflate, br, zstd",
-	"Accept-Language": "en-US,en;q=0.9",
-	//"Cache-Control":      "max-age=0",
-	"Origin":   "https://fasih-sm.bps.go.id",
-	"Priority": "u=1, i",
-	//"Referer":            "https://fasih-sm.bps.go.id",
+	"Accept-Encoding":    "gzip, deflate, br, zstd",
+	"Accept-Language":    "en-US,en;q=0.9",
+	"Cache-Control":      "max-age=0",
+	"Origin":             "https://fasih-sm.bps.go.id",
+	"Priority":           "u=1, i",
+	"Referer":            "https://fasih-sm.bps.go.id",
 	"Sec-CH-UA":          "\"Brave\";v=\"149\", \"Chromium\";v=\"149\", \"Not)A;Brand\";v=\"24\"",
 	"Sec-CH-UA-Mobile":   "?0",
 	"Sec-CH-UA-Platform": "\"macOS\"",
@@ -457,20 +457,17 @@ func (s *FasihService) GetRegionsByLevel(ctx context.Context, creds dto.FasihCre
 
 func (s *FasihService) setFasihHeaders(req *http.Request, creds dto.FasihCredentials, userAgent string, requestHeaders map[string]string) {
 	req.Header.Set("Accept", "application/json, text/plain, */*")
-	req.Header.Set("x-xsrf-token", creds.XSRFToken)
+	req.Header.Set("X-Xsrf-Token", creds.XSRFToken)
 	req.Header.Set("Cookie", creds.Cookie)
 	// req.Header.Set("X-Requested-With", "XMLHttpRequest")
 	req.Header.Set("User-Agent", s.resolveUserAgent(userAgent))
-	s.applyDefaultBrowserHeaders(req)
 	for key, value := range requestHeaders {
 		if strings.TrimSpace(key) == "" {
 			continue
 		}
 		req.Header.Set(key, value)
 	}
-	// Keep Referer stable for Fasih requests to match expected origin checks.
-	req.Header.Set("Referer", "https://fasih-sm.bps.go.id")
-	req.Header.Set("Origin", "https://fasih-sm.bps.go.id")
+	s.applyDefaultBrowserHeaders(req)
 }
 
 func (s *FasihService) applyDefaultBrowserHeaders(req *http.Request) {

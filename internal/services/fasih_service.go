@@ -24,7 +24,7 @@ const fasihAssignmentHistoryByIDPath = "/app/api/assignment-general/api/assignme
 const fasihRegionMetadataPath = "/app/api/region/api/v1/region-metadata"
 const fasihSurveyByIDPath = "/app/api/survey/api/v1/surveys"
 const fasihSurveyPeriodByIDPath = "/app/api/survey/api/v1/survey-periods"
-const staticFasihUserAgent = "Mozilla/5.0 (Windows NT 10.0; WOW64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/149.0.0.0 Safari/537.36"
+const staticFasihUserAgent = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/149.0.0.0 Safari/537.36"
 
 var fasihColumns = []map[string]interface{}{
 	{"data": "id", "orderable": true},
@@ -42,15 +42,15 @@ var fasihColumns = []map[string]interface{}{
 }
 
 var defaultFasihBrowserHeaders = map[string]string{
-	"Accept-Encoding":    "gzip, deflate, br, zstd",
-	"Accept-Language":    "en-US,en;q=0.9",
-	"Cache-Control":      "max-age=0",
-	"Origin":             "https://fasih-sm.bps.go.id",
-	"Priority":           "u=1, i",
-	"Referer":            "https://fasih-sm.bps.go.id",
-	"Sec-CH-UA":          "\"Not A;Brand\";v=\"99\", \"Chromium\";v=\"149\", \"Google Chrome\";v=\"149\"",
+	"Accept-Encoding": "gzip, deflate, br, zstd",
+	"Accept-Language": "en-US,en;q=0.9",
+	//"Cache-Control":      "max-age=0",
+	"Origin":   "https://fasih-sm.bps.go.id",
+	"Priority": "u=1, i",
+	//"Referer":            "https://fasih-sm.bps.go.id",
+	"Sec-CH-UA":          "\"Brave\";v=\"149\", \"Chromium\";v=\"149\", \"Not)A;Brand\";v=\"24\"",
 	"Sec-CH-UA-Mobile":   "?0",
-	"Sec-CH-UA-Platform": "\"Windows\"",
+	"Sec-CH-UA-Platform": "\"macOS\"",
 	"Sec-Fetch-Dest":     "empty",
 	"Sec-Fetch-Mode":     "cors",
 	"Sec-Fetch-Site":     "same-origin",
@@ -112,7 +112,6 @@ func (s *FasihService) IsAuthorizedForSurveyPeriodWithUserAgent(ctx context.Cont
 
 func (s *FasihService) IsAuthorizedForSurveyPeriodWithRequestHeaders(ctx context.Context, creds dto.FasihCredentials, surveyPeriodID string, userAgent string, requestHeaders map[string]string) bool {
 	resolvedUserAgent, source := s.resolveUserAgentWithSource(userAgent)
-	requestHeaders = nil
 
 	surveyPeriodID = strings.TrimSpace(surveyPeriodID)
 	if surveyPeriodID == "" {
@@ -460,10 +459,15 @@ func (s *FasihService) setFasihHeaders(req *http.Request, creds dto.FasihCredent
 	req.Header.Set("Accept", "application/json, text/plain, */*")
 	req.Header.Set("x-xsrf-token", creds.XSRFToken)
 	req.Header.Set("Cookie", creds.Cookie)
-	req.Header.Set("X-Requested-With", "XMLHttpRequest")
+	// req.Header.Set("X-Requested-With", "XMLHttpRequest")
 	req.Header.Set("User-Agent", s.resolveUserAgent(userAgent))
 	s.applyDefaultBrowserHeaders(req)
-	_ = requestHeaders
+	for key, value := range requestHeaders {
+		if strings.TrimSpace(key) == "" {
+			continue
+		}
+		req.Header.Set(key, value)
+	}
 	// Keep Referer stable for Fasih requests to match expected origin checks.
 	req.Header.Set("Referer", "https://fasih-sm.bps.go.id")
 	req.Header.Set("Origin", "https://fasih-sm.bps.go.id")
@@ -485,7 +489,19 @@ func (s *FasihService) ResolveUserAgentForLog(requestUserAgent string) (string, 
 }
 
 func (s *FasihService) resolveUserAgentWithSource(requestUserAgent string) (string, string) {
-	_ = requestUserAgent
+	if staticUserAgent := strings.TrimSpace(staticFasihUserAgent); staticUserAgent != "" {
+		return staticUserAgent, "static"
+	}
+
+	if cfgUserAgent := strings.TrimSpace(s.cfg.UserAgent); cfgUserAgent != "" {
+		return cfgUserAgent, "config"
+	}
+
+	requestUserAgent = strings.TrimSpace(requestUserAgent)
+	if requestUserAgent != "" {
+		return requestUserAgent, "request"
+	}
+
 	return staticFasihUserAgent, "static"
 }
 

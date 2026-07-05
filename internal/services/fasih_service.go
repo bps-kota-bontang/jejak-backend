@@ -71,12 +71,15 @@ func (s *FasihService) IsAvailable(ctx context.Context) bool {
 }
 
 func (s *FasihService) IsAvailableWithUserAgent(ctx context.Context, userAgent string) bool {
-	resolvedUserAgent, source := s.resolveUserAgentWithSource(userAgent)
-	log.Printf("[fasih][available] start baseURL=%s userAgentSource=%s userAgent=%q", s.cfg.BaseURL, source, resolvedUserAgent)
 
-	endpoint, err := url.Parse(s.cfg.BaseURL)
+	baseURL := "https://backoffice.bps.go.id"
+
+	resolvedUserAgent, source := s.resolveUserAgentWithSource(userAgent)
+	log.Printf("[fasih][available] start baseURL=%s userAgentSource=%s userAgent=%q", baseURL, source, resolvedUserAgent)
+
+	endpoint, err := url.Parse(baseURL)
 	if err != nil {
-		log.Printf("[fasih][available][error] invalid baseURL=%s err=%v userAgentSource=%s userAgent=%q", s.cfg.BaseURL, err, source, resolvedUserAgent)
+		log.Printf("[fasih][available][error] invalid baseURL=%s err=%v userAgentSource=%s userAgent=%q", baseURL, err, source, resolvedUserAgent)
 		return false
 	}
 
